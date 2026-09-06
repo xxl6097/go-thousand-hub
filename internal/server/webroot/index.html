@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>千机台 · Remote Console</title>
+<link rel="stylesheet" href="/vendor/xterm.css" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<!-- ===== 登录遮罩(默认显示,登录成功后隐藏) ===== -->
+<div id="loginOverlay">
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-mark">RC</div>
+      <div>
+        <div class="brand-name">千机台</div>
+        <div class="brand-sub">Remote Console · 主机远控</div>
+      </div>
+    </div>
+    <form id="loginForm" autocomplete="off">
+      <label>管理员账号
+        <input id="loginUser" name="username" autocomplete="username" required />
+      </label>
+      <label>密码
+        <input id="loginPass" name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <div id="loginErr" class="login-err"></div>
+      <button type="submit" class="btn primary">登 录</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== 顶栏 ===== -->
+<header class="topbar">
+  <div class="brand small">
+    <div class="brand-mark">RC</div>
+    <div class="brand-name">千机台</div>
+    <div class="brand-sub" id="brandStats"></div>
+  </div>
+  <div class="top-right">
+    <button id="btnReconnect" class="chip danger hidden" title="控制通道已断开,点击重连">通道断开</button>
+    <span id="whoAmI" class="who"></span>
+    <button id="btnLogout" class="btn ghost">退出</button>
+  </div>
+</header>
+
+<!-- ===== 主体 ===== -->
+<main id="main" class="layout hidden">
+  <!-- 主机侧栏 -->
+  <aside class="sidebar">
+    <div class="side-search">
+      <input id="filterText" type="search" placeholder="搜索主机名 / IP / 系统 …" />
+      <div class="filters">
+        <button data-f="all" class="chip active">全部</button>
+        <button data-f="online" class="chip">在线</button>
+        <button data-f="offline" class="chip">离线</button>
+      </div>
+    </div>
+    <div id="agentList" class="agent-list"></div>
+    <div id="agentEmpty" class="empty hidden">
+      <div class="empty-ico">▤</div>
+      <div>暂无匹配主机</div>
+      <div class="dim">安装 rc-agent 的主机会出现在这里</div>
+    </div>
+  </aside>
+
+  <!-- 终端工作区 -->
+  <section class="workspace">
+    <div id="tabbar" class="tabbar">
+      <div class="tab-placeholder">点击左侧主机开始远程会话</div>
+    </div>
+    <div id="termHost" class="term-host"></div>
+  </section>
+</main>
+
+<div id="toastWrap"></div>
+
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/addon-fit.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

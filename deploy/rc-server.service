@@ -1,0 +1,20 @@
+[Unit]
+Description=RC Server (Remote Console 千机台服务端)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rc-server
+EnvironmentFile=-/etc/rc-server/rc-server.conf
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+# 安全加固(建议):
+# NoNewPrivileges=true
+# ProtectSystem=strict
+# ProtectHome=true
+# PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=RC Agent (Remote Console 千机台被管端)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rc-agent
+EnvironmentFile=-/etc/rc-agent/rc-agent.conf
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
