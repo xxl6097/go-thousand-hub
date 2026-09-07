@@ -9,6 +9,7 @@ type Options struct {
 	IDFile    string        // 持久化 agent ID 的文件路径
 	Name      string        // 展示名(默认取主机名)
 	Interval  time.Duration // 指标上报周期
-	CAFile    string        // 自定义 CA 证书路径(wss 校验服务端证书用,自签场景必填)
+	CAData    []byte        // 自定义 CA 证书内容(wss 校验服务端证书用,自签场景必填)
 	Insecure  bool          // 跳过 TLS 证书校验(仅限内网/测试,慎用)
+	//CAFile    string        // 自定义 CA 证书路径(wss 校验服务端证书用,自签场景必填)
 }

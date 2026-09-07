@@ -273,18 +273,14 @@ func (a *Agent) write(c *websocket.Conn, env protocol.Envelope) error {
 //   - RC_INSECURE(Insecure):跳过校验,仅限内网/测试;
 //   - 都不设置且目标为 wss:使用系统默认信任链。
 func (a *Agent) tlsConfig() (*tls.Config, error) {
-	if a.opts.CAFile == "" && !a.opts.Insecure {
+	if a.opts.CAData == nil && !a.opts.Insecure {
 		return nil, nil
 	}
 	tc := &tls.Config{MinVersion: tls.VersionTLS12}
-	if a.opts.CAFile != "" {
-		pem, err := os.ReadFile(a.opts.CAFile)
-		if err != nil {
-			return nil, err
-		}
+	if a.opts.CAData != nil {
 		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("无法解析 CA 证书文件 %s", a.opts.CAFile)
+		if !pool.AppendCertsFromPEM(a.opts.CAData) {
+			return nil, fmt.Errorf("无法解析 CA 证书文件 %v", a.opts.CAData)
 		}
 		tc.RootCAs = pool
 	}
