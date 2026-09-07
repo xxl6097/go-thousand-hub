@@ -1,6 +1,12 @@
 package qjt
 
-import "time"
+import (
+	"context"
+	"log"
+	"time"
+
+	"github.com/xxl6097/go-thousand-hub/internal/agent"
+)
 
 // Options 运行参数(由 main 从环境变量/flag 组装)
 type Options struct {
@@ -12,4 +18,12 @@ type Options struct {
 	CAData    []byte        // 自定义 CA 证书内容(wss 校验服务端证书用,自签场景必填)
 	Insecure  bool          // 跳过 TLS 证书校验(仅限内网/测试,慎用)
 	//CAFile    string        // 自定义 CA 证书路径(wss 校验服务端证书用,自签场景必填)
+}
+
+func New(opts Options, ctx context.Context) error {
+	if err := agent.New(opts).Run(ctx); err != nil {
+		log.Printf("agent 退出: %v", err)
+		return err
+	}
+	return nil
 }
