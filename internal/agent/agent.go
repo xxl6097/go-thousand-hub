@@ -25,24 +25,14 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/xxl6097/go-thousand-hub/internal/protocol"
+	"github.com/xxl6097/go-thousand-hub/pkg/qjt"
 )
 
 const Version = "1.0.0"
 
-// Options 运行参数(由 main 从环境变量/flag 组装)
-type Options struct {
-	ServerURL string        // 形如 ws://host:port/ws/agent 或 wss://...
-	Token     string        // 与服务器共享的 agent 认证令牌
-	IDFile    string        // 持久化 agent ID 的文件路径
-	Name      string        // 展示名(默认取主机名)
-	Interval  time.Duration // 指标上报周期
-	CAFile    string        // 自定义 CA 证书路径(wss 校验服务端证书用,自签场景必填)
-	Insecure  bool          // 跳过 TLS 证书校验(仅限内网/测试,慎用)
-}
-
 // Agent 常驻客户端
 type Agent struct {
-	opts    Options
+	opts    qjt.Options
 	id      string
 	name    string // 展示名(默认真实主机名)
 	host    string // 真实主机名
@@ -57,7 +47,7 @@ type Agent struct {
 	sess   map[string]*ptySession
 }
 
-func New(opts Options) *Agent {
+func New(opts qjt.Options) *Agent {
 	host, _ := os.Hostname()
 	a := &Agent{
 		opts:    opts,
