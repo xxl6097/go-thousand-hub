@@ -16,7 +16,7 @@ import (
 	"os"
 	"strconv"
 
-	"remoteconsole/internal/server"
+	"github.com/xxl6097/go-thousand-hub/internal/server"
 )
 
 func main() {

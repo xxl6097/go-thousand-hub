@@ -15,18 +15,18 @@ import (
 	"strconv"
 	"time"
 
-	"remoteconsole/internal/agent"
+	"github.com/xxl6097/go-thousand-hub/internal/agent"
 )
 
 func main() {
 	var (
-		server    = flag.String("server", envOr("RC_SERVER", ""), "服务端地址 ws(s)://host:port/ws/agent")
-		token     = flag.String("token", envOr("RC_TOKEN", ""), "与服务端共享的 agent 令牌")
-		name      = flag.String("name", envOr("RC_NAME", ""), "主机展示名(默认主机名)")
-		idFile    = flag.String("id-file", envOr("RC_ID_FILE", "/var/lib/rc-agent/id"), "agent ID 持久化路径")
-		interval  = flag.Duration("interval", envDur("RC_INTERVAL", 5*time.Second), "指标上报周期")
-		caFile    = flag.String("ca-file", envOr("RC_CA_FILE", ""), "自定义 CA 证书路径(wss 自签证书场景)")
-		insecure  = flag.Bool("insecure", envBool("RC_INSECURE"), "跳过 TLS 证书校验(仅测试/内网)")
+		server   = flag.String("server", envOr("RC_SERVER", ""), "服务端地址 ws(s)://host:port/ws/agent")
+		token    = flag.String("token", envOr("RC_TOKEN", ""), "与服务端共享的 agent 令牌")
+		name     = flag.String("name", envOr("RC_NAME", ""), "主机展示名(默认主机名)")
+		idFile   = flag.String("id-file", envOr("RC_ID_FILE", "/var/lib/rc-agent/id"), "agent ID 持久化路径")
+		interval = flag.Duration("interval", envDur("RC_INTERVAL", 5*time.Second), "指标上报周期")
+		caFile   = flag.String("ca-file", envOr("RC_CA_FILE", ""), "自定义 CA 证书路径(wss 自签证书场景)")
+		insecure = flag.Bool("insecure", envBool("RC_INSECURE"), "跳过 TLS 证书校验(仅测试/内网)")
 	)
 	flag.Parse()
 

@@ -1,4 +1,4 @@
-module remoteconsole
+module github.com/xxl6097/go-thousand-hub
 
 go 1.26.3
 
