@@ -8,8 +8,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-
-	"remoteconsole/internal/protocol"
+	"github.com/xxl6097/go-thousand-hub/internal/protocol"
 )
 
 // AgentInfo 主机在服务端的注册视图(含最近一次指标)
@@ -32,11 +31,11 @@ type AgentInfo struct {
 
 // hub 持有:当前在线 agent、历史注册主机、终端会话路由、主机控制归属
 type hub struct {
-	mu         sync.Mutex
-	online     map[string]*agentConn
-	known      map[string]*AgentInfo
-	terms      map[string]*termRoute
-	ctlOwners  map[string]*consoleConn // agentID -> 最近一次发起 host_ctl 的控制台(用于回执路由)
+	mu        sync.Mutex
+	online    map[string]*agentConn
+	known     map[string]*AgentInfo
+	terms     map[string]*termRoute
+	ctlOwners map[string]*consoleConn // agentID -> 最近一次发起 host_ctl 的控制台(用于回执路由)
 }
 
 // agentConn agent 侧连接(服务端视图)
@@ -380,7 +379,7 @@ func (h *hub) openTerm(cc *consoleConn, req protocol.TermOpen) {
 	h.mu.Unlock()
 
 	ok := ac.send(protocol.Envelope{
-		Type:   protocol.MsgOpenPty,
+		Type:    protocol.MsgOpenPty,
 		AgentID: req.AgentID,
 		Data: protocol.Enc(protocol.PtyOpen{
 			TermID: req.TermID,

@@ -11,8 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-
-	"remoteconsole/internal/protocol"
+	"github.com/xxl6097/go-thousand-hub/internal/protocol"
 )
 
 // handleHostCtl 处理服务端下发的主机控制指令。

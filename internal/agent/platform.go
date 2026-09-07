@@ -5,7 +5,7 @@ import (
 	"os"
 	"runtime"
 
-	"remoteconsole/internal/protocol"
+	"github.com/xxl6097/go-thousand-hub/internal/protocol"
 )
 
 // 每个平台实现:

@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"remoteconsole/internal/protocol"
+	"github.com/xxl6097/go-thousand-hub/internal/protocol"
 )
 
 // kernelInfo macOS 用 uname 命令取内核版本(仅用于开发机冒烟)

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"remoteconsole/internal/protocol"
+	"github.com/xxl6097/go-thousand-hub/internal/protocol"
 )
 
 func kernelInfo() string {

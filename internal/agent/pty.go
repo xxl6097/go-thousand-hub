@@ -12,8 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/creack/pty"
-
-	"remoteconsole/internal/protocol"
+	"github.com/xxl6097/go-thousand-hub/internal/protocol"
 )
 
 // ptySession 一个远程终端会话:PTY + 子进程(shell)
