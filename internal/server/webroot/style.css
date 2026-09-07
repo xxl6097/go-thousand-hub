@@ -24,6 +24,9 @@ body {
 }
 .hidden { display: none !important; }
 .dim { color: var(--dim); }
+/* 刷新时登录态检查中:两者均不显示,判定后再由 JS 移除本标记 */
+html.boot #loginOverlay,
+html.boot #main { display: none; }
 
 /* ---------- 顶栏 ---------- */
 .topbar {
@@ -170,7 +173,130 @@ body {
 .toast.err { border-left-color: var(--red); }
 @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } }
 
+/* ---------- 操作弹层 ---------- */
+.modal {
+  position: fixed; inset: 0; z-index: 150; display: grid; place-items: center;
+  background: rgba(5, 8, 14, .66); backdrop-filter: blur(2px);
+}
+.modal-card {
+  width: 400px; max-width: calc(100vw - 40px);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0,0,0,.5); overflow: hidden;
+}
+.modal-title {
+  padding: 14px 18px; font-size: 14px; font-weight: 700;
+  border-bottom: 1px solid var(--border); background: var(--bg2);
+}
+.modal-body { padding: 16px 18px 6px; max-height: 55vh; overflow-y: auto; }
+.modal-input {
+  display: block; width: calc(100% - 36px); margin: 10px 18px 0;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg2); color: var(--text); font-size: 13px; outline: none;
+}
+.modal-input:focus { border-color: var(--red); }
+.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; }
+.btn.danger { background: var(--red); border-color: var(--red); color: #fff; font-weight: 600; }
+.btn.danger:hover { background: #ff5a52; border-color: #ff5a52; }
+.btn.danger:disabled, .btn.primary:disabled { opacity: .4; cursor: not-allowed; }
+.op-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.op-row {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel2); color: var(--text); cursor: pointer; font-size: 13px;
+  transition: .12s;
+}
+.op-row:hover { border-color: var(--accent); }
+.op-row.danger:hover { border-color: var(--red); background: rgba(239,68,68,.08); }
+.op-ico { font-size: 16px; flex: none; }
+.op-row .op-t { font-weight: 600; }
+.op-row .op-d { display: block; font-size: 11px; color: var(--dim); margin-top: 2px; font-weight: 400; }
+.warn-box {
+  margin-bottom: 10px; padding: 10px 12px; border-radius: 8px; font-size: 12px;
+  background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.35); color: #fda4a4;
+}
+.warn-box b { color: #fff; }
+.agent-item .op-btn {
+  flex: none; border: 1px solid var(--border); background: var(--panel2); color: var(--dim);
+  border-radius: 6px; cursor: pointer; font-size: 11px; padding: 2px 8px; line-height: 18px;
+  transition: .12s;
+}
+.agent-item .op-btn:hover { color: #fff; border-color: var(--accent2); }
+
+
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: #2a3446; border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #38445c; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ============================================================
+   移动端适配(≤768px):主机列表 / 终端 两屏切换 + 底部导航
+   桌面端(>768px)保持原有并排布局,不受影响
+   ============================================================ */
+
+/* ---- 手机底部导航(默认隐藏,仅 is-mobile 显示) ---- */
+.mnav { display: none; }
+.back-btn { display: none; }
+
+html.is-mobile {
+  /* 顶栏紧凑 */
+  --topbar-h: 44px;
+}
+html.is-mobile .topbar { height: var(--topbar-h); padding: 0 10px; }
+html.is-mobile .brand-sub { display: none; }
+html.is-mobile .who { display: none; }
+html.is-mobile #btnReconnect { font-size: 11px; padding: 2px 8px; }
+html.is-mobile .layout { height: calc(100vh - var(--topbar-h)); }
+
+/* ---- 两屏切换 ---- */
+html.is-mobile .sidebar,
+html.is-mobile .workspace { display: none; width: 100%; height: 100%; }
+html.is-mobile[data-v="list"] .sidebar { display: flex; }
+html.is-mobile[data-v="term"] .workspace { display: flex; }
+
+html.is-mobile .sidebar { border-right: none; min-width: 0; }
+html.is-mobile .side-search { padding: 10px 10px 8px; }
+html.is-mobile .agent-list { padding: 6px 8px calc(60px); } /* 给底部导航留位 */
+html.is-mobile .agent-item { padding: 8px 10px 8px 12px; border-radius: 8px; }
+html.is-mobile .a-id { display: none; }
+html.is-mobile .agent-item .a-meta { font-size: 10.5px; }
+html.is-mobile .agent-item .a-shell { font-size: 10px; }
+html.is-mobile .meters { gap: 10px; margin-top: 5px; }
+
+/* ---- 终端区(手机) ---- */
+html.is-mobile .workspace { flex-direction: column; }
+html.is-mobile .tabbar { padding: 6px 6px 0; }
+html.is-mobile .tab-placeholder { display: none !important; }
+html.is-mobile .term-tab { padding: 6px 6px 6px 10px; font-size: 11.5px; max-width: 160px; }
+html.is-mobile .back-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: none; width: 28px; height: 26px; margin: 0 2px 0 0;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--panel); color: var(--text); cursor: pointer;
+  font-size: 16px; line-height: 1;
+}
+html.is-mobile .back-btn:active { background: var(--panel2); }
+html.is-mobile .term-pane { padding: 4px; }
+html.is-mobile #mobileNav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+  display: flex; border-top: 1px solid var(--border);
+  background: rgba(17, 22, 31, .96); backdrop-filter: blur(8px);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+html.is-mobile .mnav-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 7px 0 6px; border: none; background: transparent;
+  color: var(--dim); font-size: 10px; cursor: pointer;
+}
+html.is-mobile .mnav-btn .mnav-ico { font-size: 17px; line-height: 1.2; }
+html.is-mobile .mnav-btn.active { color: var(--accent2); }
+html.is-mobile .mnav-cnt {
+  min-width: 15px; height: 15px; border-radius: 99px; padding: 0 4px;
+  background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ---- 手机端弹层与 Toast 适配 ---- */
+html.is-mobile .modal-card { width: calc(100vw - 24px); }
+html.is-mobile .login-card { width: calc(100vw - 40px); }
+html.is-mobile #toastWrap { left: 12px; right: 12px; bottom: calc(64px + env(safe-area-inset-bottom, 0)); }
+html.is-mobile .toast { max-width: none; }

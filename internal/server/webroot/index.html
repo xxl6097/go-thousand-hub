@@ -6,6 +6,10 @@
 <title>千机台 · Remote Console</title>
 <link rel="stylesheet" href="/vendor/xterm.css" />
 <link rel="stylesheet" href="/style.css" />
+<script>
+  // 登录态判定前的"检查中"标记:先隐藏登录框与主界面,避免刷新时登录框闪现
+  document.documentElement.classList.add("boot");
+</script>
 </head>
 <body>
 
@@ -69,13 +73,34 @@
   <!-- 终端工作区 -->
   <section class="workspace">
     <div id="tabbar" class="tabbar">
+      <button id="backToHosts" class="back-btn" title="返回主机列表">‹</button>
       <div class="tab-placeholder">点击左侧主机开始远程会话</div>
     </div>
     <div id="termHost" class="term-host"></div>
   </section>
 </main>
 
+<!-- ===== 手机端底部导航 ===== -->
+<nav id="mobileNav" class="mnav hidden">
+  <button id="mNavHosts" class="mnav-btn active"><span class="mnav-ico">▤</span>主机</button>
+  <button id="mNavTerm" class="mnav-btn"><span class="mnav-ico">⌨</span>终端<span id="mNavTermCnt" class="mnav-cnt hidden"></span></button>
+</nav>
+
 <div id="toastWrap"></div>
+
+<!-- ===== 操作/确认弹层 ===== -->
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-title" id="modalTitle">操作</div>
+    <div class="modal-body" id="modalBody"></div>
+    <input id="modalInput" class="modal-input hidden" placeholder="输入主机名以确认操作" autocomplete="off" />
+    <div class="modal-foot">
+      <button id="modalCancel" class="btn ghost">取消</button>
+      <button id="modalOk" class="btn primary" disabled>确认</button>
+    </div>
+  </div>
+</div>
+
 
 <script src="/vendor/xterm.js"></script>
 <script src="/vendor/addon-fit.js"></script>

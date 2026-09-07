@@ -1,0 +1,33 @@
+# rc-agent 配置示例 —— 安装到 /etc/rc-agent/rc-agent.conf
+# 供 systemd(rc-agent.service,EnvironmentFile=-/etc/rc-agent/rc-agent.conf)读取
+# 修改后:systemctl restart rc-agent
+
+# ========== 连接服务端(必填) ==========
+# 未开 TLS:ws://服务器IP:8080/ws/agent
+# 开 TLS  :wss://服务器IP:8080/ws/agent 或 wss://域名:8080/ws/agent
+RC_SERVER=wss://103.42.30.173:8080/ws/agent
+
+# 接入令牌(必填,与服务端 RC_AGENT_TOKEN 完全一致)
+RC_TOKEN=zhujiangjiayuan2026
+
+# ========== 身份与展示 ==========
+# 主机在控制台的展示名(默认取主机名;多台同名机器建议改成易识别的名字)
+RC_NAME=web-server-01
+
+# agent ID 持久化路径(首次运行自动生成;删除后身份会变,一般不要动)
+RC_ID_FILE=/var/lib/rc-agent/id
+
+# ========== 指标上报 ==========
+# 心跳/指标上报周期(默认 5s;在线判定依赖它)
+#RC_INTERVAL=5s
+
+# ========== TLS(服务端开启 TLS 时配置) ==========
+# 服务端自签证书/CA:把服务器的 server.crt 拷到本机后填路径,agent 以此校验 wss 服务端
+RC_CA_FILE=/etc/rc-agent/server.crt
+# 仅排障/纯内网用:跳过证书校验(=true)。生产不要开
+#RC_INSECURE=false
+
+# ========== 卸载/重启自服务 ==========
+# agent 以 systemd 服务名卸载/重启时使用的服务名(与你 rc-agent.service 文件名一致)
+# 一般无需修改;只有把服务改名为其它时(如 rc-agent-prod)才需要
+#RC_SERVICE_NAME=rc-agent

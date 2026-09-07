@@ -7,7 +7,9 @@ LDFLAGS := -s -w
 all: server agent linux
 
 server:
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/rc-server ./cmd/server
+	#$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/rc-server ./cmd/server
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/rc-server-linux-amd64 ./cmd/server
+	#CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/rc-server-linux-arm64 ./cmd/server
 
 agent:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/rc-agent-darwin ./cmd/agent

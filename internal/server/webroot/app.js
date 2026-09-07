@@ -54,6 +54,168 @@ async function api(path, opts) {
   return r.json();
 }
 
+/* 主机显示名(与二次确认输入比较) */
+function hostLabel(a) { return (a && (a.name || a.hostname)) || "未知主机"; }
+
+/* ---------------- 操作/确认弹层 ---------------- */
+function confirmDialog(opts) {
+  return new Promise((resolve) => {
+    const modal = $("#modal");
+    const input = $("#modalInput");
+    const ok = $("#modalOk");
+    const cancel = $("#modalCancel");
+    cancel.classList.remove("hidden"); // 确认模式下显示"取消"
+    $("#modalTitle").textContent = opts.title || "确认";
+    const body = $("#modalBody");
+    body.innerHTML = "";
+    if (opts.body) body.appendChild(opts.body);
+    input.classList.toggle("hidden", !opts.requireType);
+    input.value = "";
+    ok.textContent = opts.okText || "确认";
+    ok.classList.toggle("primary", !opts.danger);
+    ok.classList.toggle("danger", !!opts.danger);
+    const check = () => { ok.disabled = opts.requireType ? input.value.trim() !== opts.typeTarget : false; };
+    check();
+    input.oninput = check;
+    if (opts.requireType) setTimeout(() => input.focus(), 40);
+    let done = false;
+    const close = (v) => { if (done) return; done = true; modal.classList.add("hidden"); resolve(v); };
+    ok.onclick = () => { if (opts.requireType && input.value.trim() !== opts.typeTarget) return; close(true); };
+    cancel.onclick = () => close(false);
+    const onKey = (ev) => {
+      if (ev.key === "Escape") { close(false); document.removeEventListener("keydown", onKey); }
+      if (ev.key === "Enter" && !ok.disabled) { close(true); document.removeEventListener("keydown", onKey); }
+    };
+    document.addEventListener("keydown", onKey);
+    modal.classList.remove("hidden");
+  });
+}
+
+function listDialog(title, items) {
+  // items: [{ key, icon, label, desc, danger }]  返回选中的 key 或 null
+  return new Promise((resolve) => {
+    const modal = $("#modal");
+    const input = $("#modalInput");
+    $("#modalTitle").textContent = title;
+    const body = $("#modalBody");
+    body.innerHTML = "";
+    const list = document.createElement("div");
+    list.className = "op-list";
+    for (const it of items) {
+      const row = document.createElement("button");
+      row.className = "op-row" + (it.danger ? " danger" : "");
+      const ico = document.createElement("span");
+      ico.className = "op-ico";
+      ico.textContent = it.icon;
+      const txt = document.createElement("span");
+      const t = document.createElement("span");
+      t.className = "op-t";
+      t.textContent = it.label;
+      const d = document.createElement("span");
+      d.className = "op-d";
+      d.textContent = it.desc || "";
+      txt.appendChild(t);
+      txt.appendChild(d);
+      row.appendChild(ico);
+      row.appendChild(txt);
+      row.addEventListener("click", () => close(it.key));
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+    input.classList.add("hidden");
+    input.value = "";
+    const ok = $("#modalOk");
+    ok.textContent = "取消";
+    ok.classList.add("primary");
+    ok.classList.remove("danger");
+    ok.disabled = false;
+    $("#modalCancel").classList.add("hidden"); // 列表模式只保留右侧一个"取消"
+    let done = false;
+    const close = (v) => { if (done) return; done = true; modal.classList.add("hidden"); resolve(v); };
+    ok.onclick = () => close(null);
+    const cancelBtn = $("#modalCancel");
+    cancelBtn.onclick = () => close(null);
+    const onKey = (ev) => { if (ev.key === "Escape") { close(null); document.removeEventListener("keydown", onKey); } };
+    document.addEventListener("keydown", onKey);
+    modal.classList.remove("hidden");
+  });
+}
+
+/* 主机控制动作元信息 */
+const CTL = {
+  reboot:        { label: "重启主机",     ico: "⏻", danger: true },
+  shutdown:      { label: "关机",         ico: "⏼", danger: true },
+  restart_agent: { label: "重启 Agent",   ico: "↻", danger: false },
+  uninstall:     { label: "卸载 Agent",   ico: "⌫", danger: true },
+};
+function ctlSend(a, action) {
+  if (!wsSend({ type: "host_ctl", agent_id: a.id, data: { action } })) {
+    toast("控制通道未连接,无法下发指令", true);
+    return;
+  }
+  const meta = CTL[action] || { label: action };
+  toast(`已向「${hostLabel(a)}」下发:${meta.label}`, false, 2600);
+}
+
+async function openHostOps(a) {
+  if (!a.online) { toast(`主机「${hostLabel(a)}」当前离线`, true); return; }
+  const items = [
+    { key: "reboot", icon: CTL.reboot.ico, label: "重启主机", desc: "远程重启该 Linux 主机(reboot),数秒后失联", danger: true },
+    { key: "shutdown", icon: CTL.shutdown.ico, label: "关机", desc: "远程关机(poweroff),将无法再远程操作", danger: true },
+    { key: "restart_agent", icon: CTL.restart_agent.ico, label: "重启 Agent", desc: "仅重启本机 rc-agent 进程,不影响主机" },
+    { key: "uninstall", icon: CTL.uninstall.ico, label: "卸载 Agent", desc: "彻底删除 agent:停止服务、删除二进制/配置/ID/单元,不再受控", danger: true },
+  ];
+  const sel = await listDialog(`${hostLabel(a)} · 主机操作`, items);
+  if (!sel) return;
+
+  if (sel === "uninstall") {
+    const confirmBody = document.createElement("div");
+    const warn = document.createElement("div");
+    warn.className = "warn-box";
+    const b = document.createElement("b");
+    b.textContent = "危险操作";
+    warn.appendChild(b);
+    warn.appendChild(document.createTextNode(":卸载后该主机将从控制台失去 agent,需重新人工安装才能恢复控制。卸载会清除 rc-agent 二进制、/etc/rc-agent、/var/lib/rc-agent、systemd 单元并停止自启。"));
+    const p = document.createElement("p");
+    p.className = "dim";
+    p.style.marginTop = "4px";
+    p.textContent = `请输入主机名「${hostLabel(a)}」以确认卸载:`;
+    confirmBody.appendChild(warn);
+    confirmBody.appendChild(p);
+    const go = await confirmDialog({ title: `卸载 Agent · ${hostLabel(a)}`, body: confirmBody, danger: true, okText: "确认卸载", requireType: true, typeTarget: hostLabel(a) });
+    if (go) ctlSend(a, "uninstall");
+    return;
+  }
+  if (sel === "reboot") {
+    const confirmBody = document.createElement("div");
+    const warn = document.createElement("div");
+    warn.className = "warn-box";
+    warn.appendChild(document.createTextNode("该主机的所有运行中服务将随重启中断(数据库等请先手动落盘)。"));
+    const p = document.createElement("p");
+    p.className = "dim";
+    p.textContent = `请输入主机名「${hostLabel(a)}」以确认重启:`;
+    confirmBody.appendChild(warn);
+    confirmBody.appendChild(p);
+    const go = await confirmDialog({ title: `重启主机 · ${hostLabel(a)}`, body: confirmBody, danger: true, okText: "确认重启", requireType: true, typeTarget: hostLabel(a) });
+    if (go) ctlSend(a, "reboot");
+    return;
+  }
+  if (sel === "shutdown") {
+    const confirmBody = document.createElement("div");
+    const warn = document.createElement("div");
+    warn.className = "warn-box";
+    warn.appendChild(document.createTextNode("关机后需人工上电才能恢复,请确认业务已停止。"));
+    confirmBody.appendChild(warn);
+    const go = await confirmDialog({ title: `关机 · ${hostLabel(a)}`, body: confirmBody, danger: true, okText: "确认关机" });
+    if (go) ctlSend(a, "shutdown");
+    return;
+  }
+  if (sel === "restart_agent") {
+    const go = await confirmDialog({ title: `重启 Agent · ${hostLabel(a)}`, body: (() => { const p = document.createElement("p"); p.className = "dim"; p.textContent = "仅重启 rc-agent(systemd 托管时约几秒内自动恢复,期间该主机短暂离线)。"; return p; })(), okText: "确认重启" });
+    if (go) ctlSend(a, "restart_agent");
+  }
+}
+
 /* ---------------- 全局状态 ---------------- */
 const S = {
   agents: [],        // 主机列表快照
@@ -96,6 +258,7 @@ function initLogin() {
 }
 function afterLogin(user) {
   S.logged = true; S.user = user;
+  document.documentElement.classList.remove("boot"); // 登录态已判定
   $("#loginOverlay").classList.add("hidden");
   $("#main").classList.remove("hidden");
   $("#whoAmI").textContent = user;
@@ -159,6 +322,7 @@ function agentItem(a) {
     <span class="dot"></span>
     <div class="a-head">
       <div class="a-name"></div>
+      <button class="op-btn" title="主机操作(重启/关机/重启Agent/卸载)">操作</button>
       <span class="a-badge">${a.online ? (a.os || "") + " · 在线" : "离线"}</span>
     </div>
     <div class="a-meta"></div>
@@ -170,6 +334,14 @@ function agentItem(a) {
   el.querySelector(".a-meta").textContent = meta;
   el.querySelector(".a-shell").textContent = `${a.os || ""} ${a.arch || ""}${a.kernel ? " · " + a.kernel : ""}  shell=${a.shell || "-"}`;
   el.querySelector(".a-id").textContent = "id " + a.id;
+  const opBtn = el.querySelector(".op-btn");
+  if (a.online) {
+    opBtn.addEventListener("click", (ev) => { ev.stopPropagation(); openHostOps(a); });
+  } else {
+    opBtn.disabled = true;
+    opBtn.style.opacity = ".35";
+    opBtn.style.cursor = "not-allowed";
+  }
   if (a.online) {
     const m = a.metrics;
     const meterHost = el.querySelector(".meters");
@@ -303,6 +475,7 @@ function openSession(agent) {
   });
 
   activateTab(termID);
+  if (isMobileNow()) setView("term");
   requestOpen(s);
 }
 function requestOpen(s) {
@@ -340,6 +513,7 @@ function activateTab(termID) {
     }
   }
   updatePlaceholder();
+  refreshMNav();
 }
 function closeSession(s, notifyServer) {
   if (notifyServer) wsSend({ type: "close", data: { term_id: s.termID, data_b64: "" } });
@@ -351,6 +525,8 @@ function closeSession(s, notifyServer) {
   const any = [...S.sessions.keys()];
   if (any.length) activateTab(any[any.length - 1]);
   updatePlaceholder();
+  refreshMNav();
+  if (isMobileNow() && !S.sessions.size) setView("list"); // 手机端最后一个会话关闭回到主机列表
 }
 function closeAllSessions(reason) {
   for (const [, s] of [...S.sessions]) {
@@ -363,6 +539,62 @@ function closeAllSessions(reason) {
 }
 function updatePlaceholder() {
   $("#tabbar").querySelector(".tab-placeholder").style.display = S.sessions.size ? "none" : "block";
+}
+
+/* ============ 移动端两屏(主机列表 / 终端) ============ */
+const mqMobile = window.matchMedia("(max-width: 768px)");
+const isMobileNow = () => mqMobile.matches;
+
+function applyMobile() {
+  const m = isMobileNow();
+  const html = document.documentElement;
+  html.classList.toggle("is-mobile", m);
+  $("#mobileNav").classList.toggle("hidden", !m); // 手机模式才显示底部导航
+  if (!m) {
+    html.dataset.v = "";
+  } else if (!html.dataset.v) {
+    html.dataset.v = "list"; // 进入手机模式默认主机列表
+  }
+  refreshMNav();
+  if (m && html.dataset.v === "term") scheduleFit();
+}
+function setView(v) {
+  document.documentElement.dataset.v = v;
+  refreshMNav();
+  if (v === "term") scheduleFit();
+}
+function activeSession() {
+  for (const s of S.sessions.values()) {
+    if (s.pane.classList.contains("active")) return s;
+  }
+  const arr = [...S.sessions.values()];
+  return arr.length ? arr[arr.length - 1] : null;
+}
+function scheduleFit() {
+  setTimeout(() => {
+    const s = activeSession();
+    if (s && s.fit) { try { s.fit.fit(); } catch (e) {} }
+  }, 90);
+}
+function refreshMNav() {
+  const cnt = S.sessions.size;
+  const v = document.documentElement.dataset.v;
+  const term = $("#mNavTerm");
+  term.classList.toggle("active", v === "term");
+  $("#mNavHosts").classList.toggle("active", v !== "term");
+  const cntEl = $("#mNavTermCnt");
+  if (cnt > 0) { cntEl.textContent = cnt; cntEl.classList.remove("hidden"); } else cntEl.classList.add("hidden");
+}
+function bindMobileUI() {
+  mqMobile.addEventListener("change", applyMobile);
+  $("#backToHosts").addEventListener("click", () => setView("list"));
+  $("#mNavHosts").addEventListener("click", () => setView("list"));
+  $("#mNavTerm").addEventListener("click", () => {
+    if (!S.sessions.size) return;
+    const s = activeSession();
+    if (s) activateTab(s.termID);
+    setView("term");
+  });
 }
 function termWrite(s, str) {
   try { s.term.write(str); } catch (e) {}
@@ -404,6 +636,15 @@ function handleServerMsg(msg) {
       }
       break;
     }
+    case "host_ctl_result": {
+      const r = msg.data || {};
+      const agent = S.agents.find((x) => x.id === msg.agent_id);
+      const who = hostLabel(agent) || msg.agent_id || "主机";
+      const label = (CTL[r.action] || { label: r.action || "操作" }).label;
+      if (r.ok) toast(`${who} · ${label}:${r.msg || "已受理"}`, false, 3600);
+      else toast(`${who} · ${label}失败:${r.msg || "未知原因"}`, true, 5000);
+      break;
+    }
   }
 }
 
@@ -429,11 +670,14 @@ function bindUI() {
 async function boot() {
   initLogin();
   bindUI();
+  bindMobileUI();
+  applyMobile(); // 登录遮罩下先按视口设好模式,登录后即生效
   try {
     const j = await api("/api/me");
     if (j.user) afterLogin(j.user);
   } catch (e) {
     // 未登录:显示登录框
   }
+  document.documentElement.classList.remove("boot"); // 已判定:未登录则露出登录框
 }
 boot();

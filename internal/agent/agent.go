@@ -7,6 +7,8 @@ package agent
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -35,6 +37,8 @@ type Options struct {
 	IDFile    string // 持久化 agent ID 的文件路径
 	Name      string // 展示名(默认取主机名)
 	Interval  time.Duration // 指标上报周期
+	CAFile    string // 自定义 CA 证书路径(wss 校验服务端证书用,自签场景必填)
+	Insecure  bool   // 跳过 TLS 证书校验(仅限内网/测试,慎用)
 }
 
 // Agent 常驻客户端
@@ -112,9 +116,15 @@ func (a *Agent) connectOnce(ctx context.Context) error {
 
 	hdr := http.Header{}
 	hdr.Set("Authorization", "Bearer "+a.opts.Token)
-	c, _, err := websocket.Dial(ctx, a.opts.ServerURL, &websocket.DialOptions{
-		HTTPHeader: hdr,
-	})
+	dialOpts := &websocket.DialOptions{HTTPHeader: hdr}
+	if tc, err := a.tlsConfig(); err != nil {
+		log.Printf("TLS 配置错误: %v", err)
+	} else if tc != nil {
+		dialOpts.HTTPClient = &http.Client{
+			Transport: &http.Transport{TLSClientConfig: tc},
+		}
+	}
+	c, _, err := websocket.Dial(ctx, a.opts.ServerURL, dialOpts)
 	if err != nil {
 		return err
 	}
@@ -267,6 +277,32 @@ func (a *Agent) write(c *websocket.Conn, env protocol.Envelope) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return c.Write(ctx, websocket.MessageText, data)
+}
+
+// tlsConfig 组装 wss 握手用的 TLS 配置:
+//   - RC_CA_FILE(CAFile):把自签 CA 加入信任根,校验服务端证书(推荐);
+//   - RC_INSECURE(Insecure):跳过校验,仅限内网/测试;
+//   - 都不设置且目标为 wss:使用系统默认信任链。
+func (a *Agent) tlsConfig() (*tls.Config, error) {
+	if a.opts.CAFile == "" && !a.opts.Insecure {
+		return nil, nil
+	}
+	tc := &tls.Config{MinVersion: tls.VersionTLS12}
+	if a.opts.CAFile != "" {
+		pem, err := os.ReadFile(a.opts.CAFile)
+		if err != nil {
+			return nil, err
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("无法解析 CA 证书文件 %s", a.opts.CAFile)
+		}
+		tc.RootCAs = pool
+	}
+	if a.opts.Insecure {
+		tc.InsecureSkipVerify = true
+	}
+	return tc, nil
 }
 
 // ---------- 工具 ----------

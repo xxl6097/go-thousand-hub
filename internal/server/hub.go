@@ -196,7 +196,7 @@ func (h *hub) handleAgent(ctx context.Context, ws *websocket.Conn) {
 			}
 		case protocol.MsgPtyErr:
 			if pe, err := protocol.Dec[protocol.PtyErr](e.Data); err == nil {
-				log.Printf("[relay] agent %s pty_error term=%s msg=%s", env.AgentID, pe.TermID, pe.Msg)
+				log.Printf("[relay] agent %s pty_error term=%s msg=%s", e.AgentID, pe.TermID, pe.Msg)
 				h.forwardToTerm(pe.TermID, protocol.Envelope{
 					Type:   protocol.MsgTermErr,
 					TermID: pe.TermID,
@@ -206,7 +206,7 @@ func (h *hub) handleAgent(ctx context.Context, ws *websocket.Conn) {
 			}
 		case protocol.MsgHostCtlRes:
 			// 主机控制回执 -> 回传给发起该主机控制的控制台
-			h.ctlResult(env)
+			h.ctlResult(e)
 		}
 	}
 }

@@ -76,6 +76,30 @@ RC_SERVER=ws://127.0.0.1:8080/ws/agent RC_TOKEN=demo-token ./rc-agent-darwin
 
 ### 4.1 服务端(Linux,systemd)
 
+自签证书可直接用仓库内 `certs/` 示例(或自行生成,需含服务端 SAN):
+
+```bash
+openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
+  -keyout server.key -out server.crt \
+  -subj "/CN=remote-console/O=rc" \
+  -addext "subjectAltName=DNS:rc.example.com,DNS:localhost,IP:127.0.0.1" \
+  -addext "basicConstraints=critical,CA:TRUE"
+  
+
+openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
+  -keyout server.key -out server.crt \
+  -subj "/CN=remote-console/O=rc" \
+  -addext "subjectAltName=DNS:103.42.30.173,DNS:localhost,IP:127.0.0.1" \
+  -addext "basicConstraints=critical,CA:TRUE"
+  
+  
+openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
+  -keyout server.key -out server.crt \
+  -subj "/CN=rc-server/O=rc" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:103.42.30.173" \
+  -addext "basicConstraints=critical,CA:TRUE"
+```
+
 ```bash
 sudo cp rc-server /usr/local/bin/
 sudo mkdir -p /etc/rc-server && sudo tee /etc/rc-server/rc-server.conf <<'EOF'
@@ -84,10 +108,9 @@ RC_AGENT_TOKEN=请改成超长随机串
 RC_ADMIN_USER=admin
 RC_ADMIN_PASS=请改成强密码
 RC_SECRET=会话密钥_固定后重启不踢登录
-# 如启用 TLS:
-# RC_TLS=true
-# RC_TLS_CERT=/etc/letsencrypt/live/rc.example.com/fullchain.pem
-# RC_TLS_KEY=/etc/letsencrypt/live/rc.example.com/privkey.pem
+RC_TLS=true
+RC_TLS_CERT=/etc/rc-server/server.crt
+RC_TLS_KEY=/etc/rc-server/server.key
 EOF
 
 sudo cp deploy/rc-server.service /etc/systemd/system/
@@ -95,6 +118,26 @@ sudo systemctl daemon-reload && sudo systemctl enable --now rc-server
 ```
 
 ### 4.2 被管主机批量接入
+
+```
+sudo mkdir -p /etc/rc-agent && sudo tee /etc/rc-agent/rc-agent.conf <<'EOF'
+RC_SERVER=wss://103.42.30.173:8080/ws/agent
+RC_TOKEN=zhujiangjiayuan2026
+RC_ID_FILE=/var/lib/rc-agent/id
+RC_NAME=Flight-Hub
+EOF
+
+
+
+/etc/systemd/system/
+
+/usr/lib/systemd/system/
+
+systemctl enable --now rc-agent
+
+systemctl start rc-agent
+
+```
 
 ```bash
 # 单台:
@@ -106,17 +149,31 @@ while read h; do
 done < hosts.txt
 ```
 
-install-agent 会:安装 `/usr/local/bin/rc-agent` → 写 `/etc/rc-agent/rc-agent.conf` → 注册 systemd 并启动。agent 的 ID 持久化在 `/var/lib/rc-agent/id`,重连/重启身份不变。
+install-agent 会:安装 `/usr/local/bin/rc-agent` → 写 `/etc/rc-agent/rc-agent.conf` → 注册 systemd 并启动。agent 的 ID 持久化在 `/var/lib/rc-agent/id`,重连/重启身份不变。开 TLS 后 agent 端配置示例(自签证书需带 CA,否则握手失败):
+
+```bash
+sudo tee /etc/rc-agent/rc-agent.conf <<'EOF'
+RC_SERVER=wss://rc.example.com:8080/ws/agent
+RC_TOKEN=<与RC_AGENT_TOKEN一致>
+RC_ID_FILE=/var/lib/rc-agent/id
+RC_CA_FILE=/etc/rc-agent/server.crt
+EOF
+sudo systemctl restart rc-agent
+```
+
+> 自签证书场景:把 `server.crt` 分发到各被管机并配 `RC_CA_FILE`(agent 会以它为信任根校验服务端,同时该证书 `CA:TRUE` 声明使其可作 CA 使用);浏览器访问控制台会提示证书不受信,需手动信任一次(或改用受信 CA/letsencrypt 证书)。纯测试可给 agent 加 `RC_INSECURE=true` 跳过校验(不建议生产)。
 
 agent 常用参数(均可用环境变量替代 flag):
 
 | flag | 环境变量 | 默认 | 说明 |
 |---|---|---|---|
-| `-server` | `RC_SERVER` | 必填 | 服务端地址 `ws(s)://host:port/ws/agent` |
+| `-server` | `RC_SERVER` | 必填 | 服务端地址 `ws(s)://host:port/ws/agent`(开 TLS 用 `wss://`) |
 | `-token` | `RC_TOKEN` | 必填 | 与服务端 `RC_AGENT_TOKEN` 一致 |
 | `-name` | `RC_NAME` | 主机名 | 控制台展示名 |
 | `-id-file` | `RC_ID_FILE` | `/var/lib/rc-agent/id` | agent ID 持久化路径 |
 | `-interval` | `RC_INTERVAL` | `5s` | 指标上报周期 |
+| `-ca-file` | `RC_CA_FILE` | 空 | 自定义 CA 证书路径;服务端用自签证书时必填,agent 以此校验 wss 服务端 |
+| `-insecure` | `RC_INSECURE` | false | 跳过 TLS 校验(仅测试/纯内网,慎用) |
 
 ---
 
@@ -134,7 +191,31 @@ agent 常用参数(均可用环境变量替代 flag):
 
 ---
 
-## 六、运维说明
+## 六、远程主机控制(重启 / 关机 / 卸载)
+
+在线主机左侧点「**操作**」即可下发主机级控制指令(server → agent 通道,与终端会话独立):
+
+| 动作 | 说明 | 二次确认 |
+|---|---|---|
+| 重启主机 | agent 以 root 执行 `systemctl reboot`(回退 `/sbin/reboot`) | 需输入主机名 |
+| 关机 | `systemctl poweroff`(回退 `/sbin/poweroff`) | 弹窗确认 |
+| 重启 Agent | `systemctl restart rc-agent`,数秒内自动恢复 | 弹窗确认 |
+| 卸载 Agent | **彻底卸载自身**,见下 | 需输入主机名 |
+
+**卸载清理范围**(与 install-agent.sh 的安装动作完全互逆,顺序经过专门设计):
+1. 取消开机自启(`systemctl disable rc-agent`);
+2. **先删除**可执行文件(`/usr/local/bin`、`/usr/bin`、`/usr/sbin` 下的 rc-agent);
+3. 删除配置与持久化目录(`/etc/rc-agent`、`/var/lib/rc-agent`、`/etc/rc-agent.conf`);
+4. 删除 systemd 单元与 `service.d/override.conf`,`daemon-reload`;
+5. **最后才**触发停服/清进程(`systemctl stop`、`pkill -x rc-agent`),并结束自身进程。
+
+> ⚠ 顺序即正确性:systemd 停服(KillMode=control-group)会把服务 cgroup 内的进程全部终止,包括清理进程自身。因此**必须先删完文件、最后停服**,否则会像早期版本那样停服瞬间清理被中断、文件残留。
+>
+> 卸载以**独立会话(Setsid)**启动清理子进程;先回执后执行。卸载对**所有平台生效**(只删 agent 自己安装的产物);重启/关机/重启 agent 等系统级动作仍仅 Linux 执行(macOS 为安全空转护栏)。清理脚本有单元测试覆盖(`internal/agent/ctl_test.go`,模拟完整安装痕迹并断言删除)。卸载后主机从控制台移除(历史记录保留最后心跳),恢复控制需重新人工安装 agent。
+>
+> 已知残留:systemd journal 中 rc-agent 单元的历史日志不随卸载删除(仅可用 `journalctl --rotate && journalctl --vacuum-time=1s` 全量清空,代价是清掉整机日志,默认不做)。web 终端里以 root 跑过的命令若写入 `~/.bash_history`,属正常使用痕迹,卸载不干预。
+
+## 七、运维说明
 
 - **在线判定**:agent 每 5s 心跳;掉线即显示离线并自动结束其名下终端会话,重连后历史主机仍保留(含最后心跳时间)。
 - **终端能力**:默认启动 `$SHELL -l`(登录式,等价 SSH 会话);在终端里 `su - user2`、`sudo -i`、跑 `top/vim` 均正常(agent 为 root 时 sudo 免密)。
@@ -158,3 +239,7 @@ make test     # go vet + 编译全部目标
 ```
 
 协议细节见 `internal/protocol/protocol.go`;端到端冒烟可参考仓库外工具:登录 → `/api/agents` 拿在线 agent → `/ws/console` 发 `open/input`,断言回显与 `exit`。
+
+## gen program
+
+see: ~/Desktop/work/code/github/golang/go-frp-panel/internal/frps/client_gen.go 197
