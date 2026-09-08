@@ -171,6 +171,11 @@ func (a *Agent) sendHello(c *websocket.Conn) error {
 }
 
 func (a *Agent) metricsLoop(ctx context.Context, c *websocket.Conn) {
+	if a.opts.Interval <= 0 {
+		log.Printf("指标上报周期未设置: %v", c)
+		a.opts.Interval = 30 * time.Second
+
+	}
 	t := time.NewTicker(a.opts.Interval)
 	defer t.Stop()
 	a.reportMetrics(c)
