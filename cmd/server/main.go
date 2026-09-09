@@ -17,6 +17,7 @@ import (
 	"strconv"
 
 	"github.com/xxl6097/go-thousand-hub/internal/server"
+	"github.com/xxl6097/go-thousand-hub/internal/updater"
 )
 
 func main() {
@@ -31,6 +32,8 @@ func main() {
 		cert    = flag.String("cert", envOr("RC_TLS_CERT", "cert.pem"), "TLS 证书路径")
 		key     = flag.String("key", envOr("RC_TLS_KEY", "key.pem"), "TLS 私钥路径")
 		dev     = flag.Bool("dev", envBool("RC_DEV"), "开发模式(放行跨源 Origin)")
+		version = flag.String("version", envOr("RC_VERSION", "dev"), "服务端当前版本号(仅展示/对比用)")
+		updURL  = flag.String("updater-url", envOr("RC_UPDATE_URL", ""), "第三方升级服务地址(可选):控制台检测升级/执行升级会转发到 {url}/check 与 {url}/apply")
 	)
 	flag.Parse()
 
@@ -54,6 +57,17 @@ func main() {
 		CertFile:   *cert,
 		KeyFile:    *key,
 		Dev:        *dev,
+		Version:    *version,
+	}
+	// 升级扩展点:第三方实现注入。
+	// 方式一(零代码):配置 RC_UPDATE_URL 指向自己的升级服务(任意语言),
+	//   接口约定见 internal/updater/http.go(内置 HTTPRemote 参考实现)。
+	// 方式二(Go):实现 updater.Updater 接口后赋给 cfg.Updater 再编译。
+	if *updURL != "" {
+		cfg.Updater = updater.NewHTTPRemote(*updURL)
+		log.Printf("已启用升级通道: %s/check 与 %s/apply (HTTPRemote)", *updURL, *updURL)
+	} else {
+		log.Printf("未配置升级通道 RC_UPDATE_URL,控制台'检测升级'将提示未配置(由第三方实现注入)")
 	}
 	s := server.New(cfg)
 

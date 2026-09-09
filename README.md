@@ -243,3 +243,45 @@ make test     # go vet + 编译全部目标
 ## gen program
 
 see: ~/Desktop/work/code/github/golang/go-frp-panel/internal/frps/client_gen.go 197
+
+## 十、服务端自升级扩展(Updater)
+
+控制台右上角用户菜单(账号 ▾)提供「**检测升级**」「**退出登录**」;
+检测到新版本后菜单出现「**升级到 vX.Y.Z**」,确认后执行升级。
+升级逻辑**不在 rc-server 内置**,而是通过可插拔接口交给第三方实现:
+
+### 接口契约(第三方 Go 实现)
+
+```go
+// internal/updater/updater.go
+type Release struct {
+    Version string `json:"version"`         // 新版本号
+    Notes   string `json:"notes,omitempty"` // 更新说明
+    URL     string `json:"url,omitempty"`   // 发布/下载地址
+}
+
+type Updater interface {
+    Check(ctx context.Context) (*Release, error) // 检测新版;nil=已最新;无副作用
+    Apply(ctx context.Context, rel *Release) error // 执行升级(允许长阻塞/重启自身)
+}
+```
+
+- 注入点:`server.Config.Updater`(见 `cmd/server/main.go` 的示例注释)。未注入时控制台提示「升级通道未配置」;
+- REST 映射:控制台 → `POST /api/update/check` / `POST /api/update/apply`(均需登录)→ 委托 `Updater`。
+
+### 零代码接入(RC_UPDATE_URL,任意语言实现)
+
+给 rc-server 配一个**你自己的升级服务地址**,内置 `HTTPRemote` 实现会把检测/升级转发给它:
+
+```ini
+RC_UPDATE_URL=https://upd.example.com/api/upgrade
+```
+
+第三方升级服务只需实现两个 HTTP 接口(参考 `internal/updater/http.go`,可用任意语言):
+
+| 接口 | 说明 | 成功响应 |
+|---|---|---|
+| `GET  {RC_UPDATE_URL}/check` | 检测是否有新版 | `200` + `{"version":"v1.3.0","notes":"...","url":"..."}`;`204` = 已是最新 |
+| `POST {RC_UPDATE_URL}/apply` | 执行升级,请求体 `{"version":"v1.3.0"}` | `2xx` = 已受理 |
+
+> ⚠ `apply` 后 rc-server 进程可能被第三方逻辑重启,期间控制台会提示「服务端正在重启,页面将自动刷新」。当前版本号展示可用 `RC_VERSION` 指定(如 `RC_VERSION=v1.4.0`),仅用于界面展示与对比。

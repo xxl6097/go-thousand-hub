@@ -243,7 +243,8 @@ html.is-mobile {
 }
 html.is-mobile .topbar { height: var(--topbar-h); padding: 0 10px; }
 html.is-mobile .brand-sub { display: none; }
-html.is-mobile .who { display: none; }
+html.is-mobile .who { display: inline; } /* 用户名并入顶栏用户菜单按钮 */
+html.is-mobile .top-right { gap: 6px; }
 html.is-mobile #btnReconnect { font-size: 11px; padding: 2px 8px; }
 html.is-mobile .layout { height: calc(100vh - var(--topbar-h)); }
 @supports (height: 100dvh) {
@@ -485,3 +486,45 @@ html.is-mobile[data-v="term"] .osk-bar { display: flex; align-items: center; gap
 .ck-dots { padding: 4px 0 6px; }
 .ck-track { height: 100%; }
 .ck-page { height: 100%; }
+
+/* ============================================================
+   顶栏用户菜单(检测升级 / 退出登录)
+   ============================================================ */
+.user-menu { position: relative; display: inline-flex; }
+.user-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); color: var(--text); cursor: pointer;
+  font-size: 12.5px; max-width: 200px;
+}
+.user-btn:hover { border-color: var(--accent2); color: #fff; }
+.user-btn .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-btn .caret { color: var(--dim); font-size: 10px; }
+
+.menu-panel {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 160;
+  min-width: 190px; padding: 5px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  display: flex; flex-direction: column; gap: 2px;
+  animation: slideIn .14s ease;
+}
+.menu-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; text-align: left;
+  padding: 9px 11px; border: none; border-radius: 7px;
+  background: transparent; color: var(--text);
+  font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.menu-item:hover { background: rgba(96,165,250,.12); color: #fff; }
+.menu-item:disabled { opacity: .55; cursor: default; }
+.menu-item.up { color: #4ade80; font-weight: 600; }
+.menu-item.up:hover { background: rgba(74,222,128,.14); }
+.menu-item.danger { color: #f87171; }
+.menu-item.danger:hover { background: rgba(239,68,68,.12); color: #fff; }
+.menu-sep { height: 1px; margin: 3px 4px; background: var(--border); }
+
+/* 手机端:菜单按钮紧凑化、下拉面板尽量靠右不溢出 */
+html.is-mobile .user-btn { padding: 3px 7px; font-size: 11px; max-width: 110px; }
+html.is-mobile .user-btn .caret { display: none; }
+html.is-mobile .menu-panel { right: -4px; min-width: 176px; }

@@ -1,11 +1,13 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"log"
@@ -16,6 +18,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/xxl6097/go-thousand-hub/internal/updater"
 )
 
 // Config 服务端配置
@@ -30,6 +34,8 @@ type Config struct {
 	CertFile  string
 	KeyFile   string
 	Dev       bool // 开发模式:允许任意 Origin
+	Version   string // 服务端当前版本号(展示用,默认 "dev")
+	Updater   updater.Updater // 自升级通道(可选,由第三方实现注入;nil 时控制台提示未配置)
 }
 
 type session struct {
@@ -39,10 +45,11 @@ type session struct {
 
 // Server HTTP 服务
 type Server struct {
-	cfg    Config
-	hub    *hub
-	mu     sync.Mutex
-	sess   map[string]session
+	cfg  Config
+	hub  *hub
+	up   updater.Updater
+	mu   sync.Mutex
+	sess map[string]session
 }
 
 func New(cfg Config) *Server {
@@ -63,7 +70,18 @@ func New(cfg Config) *Server {
 		cfg.AgentToken = "rc-agent-token"
 		log.Printf("警告: 使用默认 agent 令牌 %q,请通过 RC_AGENT_TOKEN 修改!", cfg.AgentToken)
 	}
-	return &Server{cfg: cfg, hub: newHub(), sess: map[string]session{}}
+	if cfg.Updater == nil {
+		cfg.Updater = updater.Noop{}
+	}
+	return &Server{cfg: cfg, hub: newHub(), up: cfg.Updater, sess: map[string]session{}}
+}
+
+// CurrentVersion 服务端自身版本号(展示/对比用)
+func (s *Server) CurrentVersion() string {
+	if s.cfg.Version != "" {
+		return s.cfg.Version
+	}
+	return "dev"
 }
 
 // Run 启动 HTTP 服务
@@ -82,6 +100,8 @@ func (s *Server) Run() error {
 	mux.HandleFunc("/api/logout", s.withAuth(s.handleLogout))
 	mux.HandleFunc("/api/me", s.withAuth(s.handleMe))
 	mux.HandleFunc("/api/agents", s.withAuth(s.handleAgents))
+	mux.HandleFunc("/api/update/check", s.withAuth(s.handleUpdateCheck))
+	mux.HandleFunc("/api/update/apply", s.withAuth(s.handleUpdateApply))
 
 	// WebSocket
 	mux.HandleFunc("/ws/agent", s.handleAgentWS)
@@ -228,6 +248,72 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s.hub.snapshot())
+}
+
+// ---------- 服务端自升级(Updater 扩展点) ----------
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// handleUpdateCheck 检测升级:委托 updater.Updater.Check(由第三方实现)。
+// 返回 latest=null 表示已是最新;code=not_configured 表示未注入实现。
+func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	cur := s.CurrentVersion()
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	rel, err := s.up.Check(ctx)
+	if err != nil {
+		if errors.Is(err, updater.ErrNotConfigured) {
+			writeJSON(w, http.StatusNotImplemented, map[string]any{
+				"ok": false, "code": "not_configured", "error": err.Error(), "current": cur,
+			})
+			return
+		}
+		log.Printf("[update] check 失败: %v", err)
+		writeJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "error": err.Error(), "current": cur})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "current": cur, "latest": rel})
+}
+
+// handleUpdateApply 执行升级:委托 updater.Updater.Apply(由第三方实现)。
+func (s *Server) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	var req struct {
+		Version string `json:"version"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req)
+	cur := s.CurrentVersion()
+	if req.Version == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "缺少 version 参数", "current": cur})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	if err := s.up.Apply(ctx, &updater.Release{Version: req.Version}); err != nil {
+		if errors.Is(err, updater.ErrNotConfigured) {
+			writeJSON(w, http.StatusNotImplemented, map[string]any{
+				"ok": false, "code": "not_configured", "error": err.Error(), "current": cur,
+			})
+			return
+		}
+		log.Printf("[update] apply %s 失败: %v", req.Version, err)
+		writeJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "error": err.Error(), "current": cur})
+		return
+	}
+	log.Printf("[update] apply %s 已执行", req.Version)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "msg": "升级已执行,服务端可能正在重启(重启后请重新登录)",
+	})
 }
 
 // ---------- WebSocket 接入 ----------

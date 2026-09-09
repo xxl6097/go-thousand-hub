@@ -275,10 +275,98 @@ function onAuthLost() {
   $("#loginOverlay").classList.remove("hidden");
   toast("登录已失效,请重新登录", true);
 }
-$("#btnLogout").addEventListener("click", async () => {
-  try { await api("/api/logout", { method: "POST" }); } catch (e) {}
-  onAuthLost();
-});
+/* ---------------- 顶栏用户菜单(检测升级 / 退出登录) ---------------- */
+function initUserMenu() {
+  const btn = $("#userMenuBtn"), panel = $("#userMenuPanel");
+  const close = () => panel.classList.add("hidden");
+  btn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    panel.classList.toggle("hidden");
+  });
+  document.addEventListener("click", () => close());
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") close(); });
+
+  // 退出登录
+  $("#mLogout").addEventListener("click", async () => {
+    close();
+    try { await api("/api/logout", { method: "POST" }); } catch (e) {}
+    onAuthLost();
+  });
+
+  // 检测升级(调用后端升级扩展点 /api/update/check)
+  $("#mCheckUpd").addEventListener("click", checkUpgrade);
+  // 升级到检测到的新版本(调用 /api/update/apply)
+  $("#mUpgrade").addEventListener("click", applyUpgrade);
+}
+let pendingRelease = null; // 最近一次 checkUpgrade 发现的新版本
+
+async function checkUpgrade() {
+  const mi = $("#mCheckUpd");
+  const oldText = mi.textContent;
+  mi.disabled = true; mi.textContent = "检测中…";
+  try {
+    const j = await api("/api/update/check", { method: "POST" });
+    const up = $("#mUpgrade");
+    if (j && j.ok === false) {
+      pendingRelease = null;
+      up.classList.add("hidden");
+      if (j.code === "not_configured") {
+        toast("升级通道未配置: 服务端未注入升级实现(RC_UPDATE_URL)", true, 5000);
+      } else {
+        toast((j.error || "检测升级失败") + (j.current ? " (当前 v" + j.current + ")" : ""), true, 5000);
+      }
+      return;
+    }
+    if (j && j.latest && j.latest.version) {
+      pendingRelease = j.latest;
+      up.classList.remove("hidden");
+      up.textContent = "⬆ 升级到 " + j.latest.version + (j.latest.notes ? " · " + j.latest.notes : "");
+      toast("发现新版本 " + j.latest.version + ",可点击菜单「升级」安装", false, 6000);
+    } else {
+      pendingRelease = null;
+      up.classList.add("hidden");
+      toast("已是最新版本" + (j && j.current ? " (" + j.current + ")" : ""));
+    }
+  } catch (e) {
+    toast("检测升级失败: " + (e && e.message ? e.message : "网络错误"), true);
+  } finally {
+    mi.disabled = false; mi.textContent = oldText;
+  }
+}
+
+async function applyUpgrade() {
+  if (!pendingRelease) return;
+  const rel = pendingRelease;
+  const go = await confirmDialog({
+    title: "升级服务端",
+    body: (() => {
+      const p = document.createElement("p");
+      p.innerHTML = "";
+      p.append("检测到新版本 ");
+      const b = document.createElement("b"); b.textContent = rel.version;
+      p.appendChild(b);
+      p.append("。升级过程会重启服务端进程,期间控制台短暂中断(约几秒)。确定立即升级?");
+      return p;
+    })(),
+    okText: "立即升级", danger: true,
+  });
+  if (!go) return;
+  try {
+    const j = await api("/api/update/apply", {
+      method: "POST",
+      body: JSON.stringify({ version: rel.version }),
+    });
+    if (j && j.ok === false) {
+      toast((j.code === "not_configured" ? "升级通道未配置" : (j.error || "升级失败")), true, 5000);
+      return;
+    }
+    toast(j && j.msg ? j.msg : "升级已执行", false, 6000);
+  } catch (e) {
+    // 升级常伴随进程重启:连接被重置/超时视为已触发
+    toast("升级指令已发出,服务端正在重启,页面将自动刷新…", false, 5000);
+    setTimeout(() => { try { location.reload(); } catch (e2) {} }, 4000);
+  }
+}
 
 /* ---------------- 主机列表 ---------------- */
 async function refreshAgents() {
@@ -632,7 +720,7 @@ const ckState = { open: false, shift: false, caps: false, ctrl: false, alt: fals
 
 // Linux 运维/命令高频快捷词(点按即把命令敲入终端,可继续补参数再按回车)
 const CK_CHIPS = [
-  "clear", "sudo", "systemctl", "ls -la", "cd ..", "cat", "grep",
+  "clear", "sudo", "systemctl", "ls -lh", "ls -la", "cd ..", "cat", "grep",
   "tail -f", "ps aux", "pwd", "whoami", "df -h", "free -h", "top",
   "./", "../", "~", "/var/log/", "exit",
 ];
@@ -959,6 +1047,7 @@ function bindUI() {
 async function boot() {
   initLogin();
   bindUI();
+  initUserMenu();
   bindMobileUI();
   applyMobile(); // 登录遮罩下先按视口设好模式,登录后即生效
   try {

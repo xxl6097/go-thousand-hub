@@ -45,8 +45,17 @@
   </div>
   <div class="top-right">
     <button id="btnReconnect" class="chip danger hidden" title="控制通道已断开,点击重连">通道断开</button>
-    <span id="whoAmI" class="who"></span>
-    <button id="btnLogout" class="btn ghost">退出</button>
+    <div id="userMenu" class="user-menu">
+      <button id="userMenuBtn" class="user-btn" title="菜单">
+        <span id="whoAmI" class="who"></span><span class="caret">▾</span>
+      </button>
+      <div id="userMenuPanel" class="menu-panel hidden">
+        <button id="mCheckUpd" class="menu-item" title="检测服务端是否有可升级的新版本">⟳ 检测升级</button>
+        <button id="mUpgrade" class="menu-item up hidden" title="升级到检测到的新版本"></button>
+        <div class="menu-sep"></div>
+        <button id="mLogout" class="menu-item danger">退出登录</button>
+      </div>
+    </div>
   </div>
 </header>
 
