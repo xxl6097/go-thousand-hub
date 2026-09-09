@@ -556,11 +556,13 @@ function applyMobile() {
     html.dataset.v = "list"; // 进入手机模式默认主机列表
   }
   refreshMNav();
+  refreshConsoleKeys(); // 离开手机终端视图时收起键盘
   if (m && html.dataset.v === "term") scheduleFit();
 }
 function setView(v) {
   document.documentElement.dataset.v = v;
   refreshMNav();
+  refreshConsoleKeys();
   if (v === "term") scheduleFit();
 }
 function activeSession() {
@@ -595,6 +597,126 @@ function bindMobileUI() {
     if (s) activateTab(s.termID);
     setView("term");
   });
+  ckBuild(); // 构建控制台专属键盘(仅渲染一次)
+  $("#ckFloat").addEventListener("click", () => { ckOpen(true); });
+  document.addEventListener("pointerdown", (ev) => {
+    // 点到终端空白处若键盘面板开着则收起(避免遮屏),点到面板内不收起
+    if (ckState.open && !ev.target.closest("#consoleKeys") && !ev.target.closest(".xterm")) {
+      ckOpen(false);
+    }
+  });
+}
+
+/* ============ 手机端控制台专属键盘 ============ */
+const ckState = { open: false, shift: false, ctrl: false };
+
+const CK_SPECIAL = [
+  { l: "Esc", s: "\x1b" }, { l: "Tab", s: "\t" },
+  { l: "↑", s: "\x1b[A" }, { l: "↓", s: "\x1b[B" }, { l: "←", s: "\x1b[D" }, { l: "→", s: "\x1b[C" },
+  { l: "⌫", s: "\x7f", wide: true }, { l: "↵", s: "\r", wide: true },
+];
+const CK_SYM = ["/", "-", "_", ".", ":", "=", "|", "&", ";", ">", ">>", "~", "@", "$"];
+const CK_DIG = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+const CK_L1 = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
+const CK_L2 = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
+const CK_L3 = ["z", "x", "c", "v", "b", "n", "m"];
+
+function ckCtrlCode(ch) {
+  const c = ch.toLowerCase();
+  if (c >= "a" && c <= "z") return String.fromCharCode(ch.charCodeAt(0) - 96);
+  if (ch === "[") return "\x1b";
+  if (ch === "@") return "\x00";
+  if (ch === "_") return "\x1f";
+  if (ch === "?") return "\x7f";
+  return null;
+}
+
+function ckSend(seq) {
+  const s = activeSession();
+  if (!s || s.dead) { toast("没有可用的活动终端", true); return; }
+  if (document.activeElement && document.activeElement.blur) { try { document.activeElement.blur(); } catch (e) {} }
+  wsSend({ type: "input", data: { term_id: s.termID, data_b64: toB64(seq) } });
+}
+
+function ckKeyTap(ch) {
+  let seq;
+  if (ckState.ctrl) {
+    const code = ckCtrlCode(ch);
+    seq = code !== null ? code : ch; // Ctrl 组合(组合键为一次性)
+    ckState.ctrl = false;
+  } else {
+    seq = ckState.shift ? ch.toUpperCase() : ch; // Shift 为粘滞,再次点击取消
+  }
+  ckRenderMods();
+  ckSend(seq);
+}
+
+function ckBuild() {
+  const box = $("#consoleKeys");
+  box.innerHTML = "";
+  const keyEl = (label, cls, onClick) => {
+    const b = document.createElement("button");
+    b.className = "ck-key" + (cls ? " " + cls : "");
+    b.textContent = label;
+    b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); onClick(); });
+    return b;
+  };
+  const addRow = (arr, cls) => {
+    const row = document.createElement("div");
+    row.className = "ck-row" + (cls ? " " + cls : "");
+    for (const k of arr) {
+      row.appendChild(keyEl(k.l, k.wide ? "wide" : "", () => ckKeyTap(k.s)));
+    }
+    box.appendChild(row);
+  };
+  addRow(CK_SPECIAL, "special");
+  addRow(CK_SYM.map((s) => ({ l: s, s: s })));
+  addRow(CK_DIG.map((s) => ({ l: s, s: s })));
+  addRow(CK_L1.map((s) => ({ l: s, s: s })));
+  addRow(CK_L2.map((s) => ({ l: s, s: s })));
+  addRow(CK_L3.map((s) => ({ l: s, s: s })));
+  // 修饰行:Shift / Ctrl / 空格 / 回车 / 收起
+  const modRow = document.createElement("div");
+  modRow.className = "ck-row";
+  ckShiftKey = keyEl("⇧ Shift", "mod wide", () => {
+    ckState.shift = !ckState.shift;
+    ckState.ctrl = false;
+    ckRenderMods();
+  });
+  ckCtrlKey = keyEl("Ctrl", "mod wide", () => {
+    ckState.ctrl = !ckState.ctrl;
+    ckState.shift = false;
+    ckRenderMods();
+  });
+  const spKey = keyEl("空格", "space", () => ckSend(" "));
+  const enKey = keyEl("↵ 回车", "mod", () => ckSend("\r"));
+  const clKey = keyEl("收起 ⌄", "mod", () => ckOpen(false));
+  modRow.append(ckShiftKey, ckCtrlKey, spKey, enKey, clKey);
+  box.appendChild(modRow);
+}
+
+let ckShiftKey = null, ckCtrlKey = null;
+
+function ckRenderMods() {
+  if (ckShiftKey) ckShiftKey.classList.toggle("armed", ckState.shift);
+  if (ckCtrlKey) {
+    ckCtrlKey.classList.toggle("armed", ckState.ctrl);
+    ckCtrlKey.textContent = ckState.ctrl ? "Ctrl ⦿" : "Ctrl";
+  }
+}
+
+function ckOpen(open) {
+  ckState.open = !!open;
+  const kb = $("#consoleKeys");
+  kb.classList.toggle("show", ckState.open);
+  $("#ckFloat").classList.toggle("show", isMobileNow() && !ckState.open);
+  scheduleFit();
+}
+
+function refreshConsoleKeys() {
+  const on = isMobileNow() && document.documentElement.dataset.v === "term";
+  if (!on) ckOpen(false);
+  else $("#ckFloat").classList.toggle("show", !ckState.open);
 }
 function termWrite(s, str) {
   try { s.term.write(str); } catch (e) {}
