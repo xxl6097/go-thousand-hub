@@ -17,7 +17,8 @@ import (
 	"strconv"
 
 	"github.com/xxl6097/go-thousand-hub/internal/server"
-	"github.com/xxl6097/go-thousand-hub/internal/updater"
+	"github.com/xxl6097/go-thousand-hub/pkg/server/m"
+	"github.com/xxl6097/go-thousand-hub/pkg/server/updater"
 )
 
 func main() {
@@ -46,7 +47,7 @@ func main() {
 		log.Printf("提示: 未设置 RC_ADMIN_PASS,使用默认 admin123(生产环境务必修改)")
 	}
 
-	cfg := server.Config{
+	cfg := m.Config{
 		Listen:     *listen,
 		AgentToken: *token,
 		AdminUser:  *user,
@@ -69,7 +70,7 @@ func main() {
 	} else {
 		log.Printf("未配置升级通道 RC_UPDATE_URL,控制台'检测升级'将提示未配置(由第三方实现注入)")
 	}
-	s := server.New(cfg)
+	s, _ := server.New(&cfg)
 
 	log.Printf("rc-server 启动: listen=%s admin_user=%s", cfg.Listen, cfg.AdminUser)
 	log.Printf("agent 接入地址: ws://<本机>%s/ws/agent (请为 agent 配置 RC_SERVER)", cfg.Listen)

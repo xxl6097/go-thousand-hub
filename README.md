@@ -277,7 +277,7 @@ type Updater interface {
 RC_UPDATE_URL=https://upd.example.com/api/upgrade
 ```
 
-第三方升级服务只需实现两个 HTTP 接口(参考 `internal/updater/http.go`,可用任意语言):
+第三方升级服务只需实现两个 HTTP 接口(参考 `pkg/server/updater/http.go`,可用任意语言):
 
 | 接口 | 说明 | 成功响应 |
 |---|---|---|

@@ -1,4 +1,4 @@
-package q
+package agent
 
 import (
 	"context"
@@ -6,10 +6,10 @@ import (
 	"log"
 
 	"github.com/xxl6097/go-thousand-hub/internal/agent"
-	"github.com/xxl6097/go-thousand-hub/pkg/qjt"
+	"github.com/xxl6097/go-thousand-hub/pkg/agent/m"
 )
 
-func NewQJT(opts *qjt.Options, ctx context.Context) error {
+func New(opts *m.Options, ctx context.Context) error {
 	if opts == nil {
 		return errors.New("opts is nil")
 	}

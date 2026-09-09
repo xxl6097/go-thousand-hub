@@ -24,14 +24,14 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/xxl6097/go-thousand-hub/internal/protocol"
-	"github.com/xxl6097/go-thousand-hub/pkg/qjt"
+	"github.com/xxl6097/go-thousand-hub/pkg/agent/m"
 )
 
 const Version = "1.0.0"
 
 // Agent 常驻客户端
 type Agent struct {
-	opts    qjt.Options
+	opts    m.Options
 	id      string
 	name    string // 展示名(默认真实主机名)
 	host    string // 真实主机名
@@ -46,7 +46,7 @@ type Agent struct {
 	sess   map[string]*ptySession
 }
 
-func New(opts qjt.Options) *Agent {
+func New(opts m.Options) *Agent {
 	host, _ := os.Hostname()
 	a := &Agent{
 		opts:    opts,

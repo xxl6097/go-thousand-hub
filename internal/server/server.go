@@ -18,25 +18,9 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-
-	"github.com/xxl6097/go-thousand-hub/internal/updater"
+	"github.com/xxl6097/go-thousand-hub/pkg/server/m"
+	"github.com/xxl6097/go-thousand-hub/pkg/server/updater"
 )
-
-// Config 服务端配置
-type Config struct {
-	Listen    string // 监听地址,如 :8080
-	AgentToken string // agent 接入令牌
-	AdminUser string
-	AdminPass string
-	Secret    string // 会话签名随机源(默认每次启动随机,重启需重新登录)
-	WebDir    string // 前端静态资源目录覆盖(可选)
-	TLS       bool
-	CertFile  string
-	KeyFile   string
-	Dev       bool // 开发模式:允许任意 Origin
-	Version   string // 服务端当前版本号(展示用,默认 "dev")
-	Updater   updater.Updater // 自升级通道(可选,由第三方实现注入;nil 时控制台提示未配置)
-}
 
 type session struct {
 	user string
@@ -45,19 +29,22 @@ type session struct {
 
 // Server HTTP 服务
 type Server struct {
-	cfg  Config
+	cfg  *m.Config
 	hub  *hub
 	up   updater.Updater
 	mu   sync.Mutex
 	sess map[string]session
 }
 
-func New(cfg Config) *Server {
+func New(cfg *m.Config) (*Server, error) {
+	if cfg == nil {
+		return nil, errors.New("config is nil")
+	}
 	if cfg.Secret == "" {
 		b := make([]byte, 24)
 		_, _ = rand.Read(b)
 		cfg.Secret = hex.EncodeToString(b)
-		log.Printf("警告: 未设置会话密钥 RC_SECRET,已随机生成(服务重启后所有会话失效)")
+		return nil, errors.New("警告: 未设置会话密钥 RC_SECRET,已随机生成(服务重启后所有会话失效)")
 	}
 	if cfg.AdminUser == "" {
 		cfg.AdminUser = "admin"
@@ -73,7 +60,7 @@ func New(cfg Config) *Server {
 	if cfg.Updater == nil {
 		cfg.Updater = updater.Noop{}
 	}
-	return &Server{cfg: cfg, hub: newHub(), up: cfg.Updater, sess: map[string]session{}}
+	return &Server{cfg: cfg, hub: newHub(), up: cfg.Updater, sess: map[string]session{}}, nil
 }
 
 // CurrentVersion 服务端自身版本号(展示/对比用)
@@ -115,7 +102,7 @@ func (s *Server) Run() error {
 	return http.ListenAndServe(addr, mux)
 }
 
-func tlsScheme(c Config) string {
+func tlsScheme(c *m.Config) string {
 	if c.TLS {
 		return "s"
 	}

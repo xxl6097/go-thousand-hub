@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/xxl6097/go-thousand-hub/internal/agent"
-	"github.com/xxl6097/go-thousand-hub/pkg/qjt"
+	"github.com/xxl6097/go-thousand-hub/pkg/agent/m"
 )
 
 func main() {
@@ -45,7 +45,7 @@ func main() {
 	if caFile != nil && *caFile != "" {
 		cadata, _ = os.ReadFile(*caFile)
 	}
-	opts := qjt.Options{
+	opts := m.Options{
 		ServerURL: *server,
 		Token:     *token,
 		IDFile:    *idFile,
