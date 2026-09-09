@@ -2,7 +2,6 @@ package agent
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 	"os/exec"
 	"runtime"
@@ -123,9 +122,8 @@ func restartSelf() error {
 func (a *Agent) doUninstall() {
 	time.Sleep(400 * time.Millisecond) // 等回执落地
 	// 清理子进程用 Setsid 脱离会话;关键:systemd 停服会杀整个 cgroup,
-	// 因此脚本把“停服/杀进程”放到最后一步(见 uninstallScript),保证文件先删完。
+	// 因此脚本把”停服/杀进程”放到最后一步(见 uninstallScript),保证文件先删完。
 	if err := startDetached("/bin/sh", "-c", uninstallScript()); err != nil {
-		log.Printf("[uninstall] 清理进程启动失败: %v", err)
 		// 启动失败也退出,避免半死状态
 		os.Exit(0)
 		return
@@ -187,6 +185,7 @@ func startDetached(name string, args ...string) error {
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
+		// log.Printf("[uninstall] 清理进程启动失败: %v", err)
 		return err
 	}
 	_ = cmd.Process.Release() // 避免僵尸进程,交由 init 收养

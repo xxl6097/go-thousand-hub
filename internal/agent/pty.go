@@ -3,7 +3,6 @@ package agent
 import (
 	"encoding/base64"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -60,10 +59,10 @@ func (a *Agent) openPty(c *websocket.Conn, req protocol.PtyOpen) error {
 
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: req.Cols, Rows: req.Rows})
 	if err != nil {
-		log.Printf("[pty] 启动失败 term=%s err=%v", req.TermID, err)
+		// log.Printf("[pty] 启动失败 term=%s err=%v", req.TermID, err)
 		return a.write(c, protocol.Envelope{Type: protocol.MsgPtyErr, AgentID: a.id, Data: protocol.Enc(protocol.PtyErr{TermID: req.TermID, Msg: "pty start failed: " + err.Error()})})
 	}
-	log.Printf("[pty] 已启动 term=%s shell=%s pid=%d", req.TermID, cmd.Path, cmd.Process.Pid)
+	// log.Printf("[pty] 已启动 term=%s shell=%s pid=%d", req.TermID, cmd.Path, cmd.Process.Pid)
 
 	s := &ptySession{agent: a, conn: c, termID: req.TermID, ptmx: f, cmd: cmd}
 	a.sessMu.Lock()

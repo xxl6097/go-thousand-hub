@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -84,11 +83,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		err := a.connectOnce(ctx)
+		_ = a.connectOnce(ctx)
 		if ctx.Err() != nil {
 			return nil
 		}
-		log.Printf("连接断开: %v, %s 后重连", err, backoff)
+		// log.Printf("连接断开: %v, %s 后重连", err, backoff)
 		select {
 		case <-ctx.Done():
 			return nil
@@ -101,13 +100,14 @@ func (a *Agent) Run(ctx context.Context) error {
 }
 
 func (a *Agent) connectOnce(ctx context.Context) error {
-	log.Printf("连接服务端 %s (id=%s name=%s shell=%s)", a.opts.ServerURL, a.id, a.name, a.shell)
+	// log.Printf("连接服务端 %s (id=%s name=%s shell=%s)", a.opts.ServerURL, a.id, a.name, a.shell)
 
 	hdr := http.Header{}
 	hdr.Set("Authorization", "Bearer "+a.opts.Token)
 	dialOpts := &websocket.DialOptions{HTTPHeader: hdr}
 	if tc, err := a.tlsConfig(); err != nil {
-		log.Printf("TLS 配置错误: %v", err)
+		// log.Printf("TLS 配置错误: %v", err)
+		return err
 	} else if tc != nil {
 		dialOpts.HTTPClient = &http.Client{
 			Transport: &http.Transport{TLSClientConfig: tc},
@@ -145,11 +145,11 @@ func (a *Agent) connectOnce(ctx context.Context) error {
 		}
 		var env protocol.Envelope
 		if err := json.Unmarshal(data, &env); err != nil {
-			log.Printf("非法消息: %v", err)
+			// log.Printf("非法消息: %v", err)
 			continue
 		}
 		if err := a.handleCommand(ctx, c, env); err != nil {
-			log.Printf("处理命令 %s 失败: %v", env.Type, err)
+			// log.Printf("处理命令 %s 失败: %v", env.Type, err)
 		}
 	}
 }
@@ -172,7 +172,7 @@ func (a *Agent) sendHello(c *websocket.Conn) error {
 
 func (a *Agent) metricsLoop(ctx context.Context, c *websocket.Conn) {
 	if a.opts.Interval <= 0 {
-		log.Printf("指标上报周期未设置: %v", c)
+		// log.Printf("指标上报周期未设置: %v", c)
 		a.opts.Interval = 30 * time.Second
 
 	}
@@ -194,7 +194,7 @@ func (a *Agent) reportMetrics(c *websocket.Conn) {
 	m.NowUnix = time.Now().Unix()
 	env := protocol.Envelope{Type: protocol.MsgMetrics, AgentID: a.id, Data: protocol.Enc(m)}
 	if err := a.write(c, env); err != nil {
-		log.Printf("指标上报失败: %v", err)
+		// log.Printf("指标上报失败: %v", err)
 	}
 }
 

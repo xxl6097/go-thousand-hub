@@ -55,7 +55,7 @@ func main() {
 		Insecure:  *insecure,
 	}
 
-	log.Printf("rc-agent %s 启动(server=%s name=%s idFile=%s)", agent.Version, *server, nameLabel(*name), *idFile)
+	// log.Printf("rc-agent %s 启动(server=%s name=%s idFile=%s)", agent.Version, *server, nameLabel(*name), *idFile)
 	if err := agent.New(opts).Run(context.Background()); err != nil {
 		log.Fatalf("agent 退出: %v", err)
 	}
