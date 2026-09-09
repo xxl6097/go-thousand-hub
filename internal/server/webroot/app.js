@@ -455,7 +455,23 @@ function openSession(agent) {
     scrollback: 5000,
     allowProposedApi: true,
     accessibility: true,
+    focusOnClick: true, // 点终端任意处即聚焦,移动端可唤起系统软键盘
   });
+  // 再兜底:点击/抬起终端画布区域即聚焦(移动端借此唤起系统软键盘)
+  const focusTerm = () => {
+    if (s.term && !s.dead) {
+      try {
+        s.term.focus();
+        const ta = s.term.textarea;
+        if (ta) { ta.setAttribute("inputmode", "text"); ta.setAttribute("autocapitalize", "off"); }
+        if (ta && ta.scrollIntoView) { try { ta.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} }
+      } catch (e) {}
+      // 部分 iOS 需要手势同帧/延时二段聚焦才肯弹软键盘
+      setTimeout(() => { try { s.term.focus(); } catch (e) {} }, 120);
+    }
+  };
+  pane.addEventListener("pointerup", focusTerm);
+  pane.addEventListener("click", focusTerm);
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   s.dec = new TextDecoder("utf-8");
@@ -475,7 +491,10 @@ function openSession(agent) {
   });
 
   activateTab(termID);
-  if (isMobileNow()) setView("term");
+  if (isMobileNow()) {
+    setView("term");
+    ckOpen(true); // 手机端进终端自动展开命令键盘(快捷芯片/符号/Ctrl)
+  }
   requestOpen(s);
 }
 function requestOpen(s) {
@@ -598,6 +617,7 @@ function bindMobileUI() {
     setView("term");
   });
   ckBuild(); // 构建控制台专属键盘(仅渲染一次)
+  bindCkPaging(); // 双页左右滑动/圆点翻页
   $("#ckFloat").addEventListener("click", () => { ckOpen(true); });
   document.addEventListener("pointerdown", (ev) => {
     // 点到终端空白处若键盘面板开着则收起(避免遮屏),点到面板内不收起
@@ -607,19 +627,75 @@ function bindMobileUI() {
   });
 }
 
-/* ============ 手机端控制台专属键盘 ============ */
-const ckState = { open: false, shift: false, ctrl: false };
+/* ============ 手机端虚拟键盘(完整 PC 式布局,按键直通终端) ============ */
+const ckState = { open: false, shift: false, caps: false, ctrl: false, alt: false };
 
-const CK_SPECIAL = [
-  { l: "Esc", s: "\x1b" }, { l: "Tab", s: "\t" },
-  { l: "↑", s: "\x1b[A" }, { l: "↓", s: "\x1b[B" }, { l: "←", s: "\x1b[D" }, { l: "→", s: "\x1b[C" },
-  { l: "⌫", s: "\x7f", wide: true }, { l: "↵", s: "\r", wide: true },
+// Linux 运维/命令高频快捷词(点按即把命令敲入终端,可继续补参数再按回车)
+const CK_CHIPS = [
+  "clear", "sudo", "systemctl", "ls -la", "cd ..", "cat", "grep",
+  "tail -f", "ps aux", "pwd", "whoami", "df -h", "free -h", "top",
+  "./", "../", "~", "/var/log/", "exit",
 ];
-const CK_SYM = ["/", "-", "_", ".", ":", "=", "|", "&", ";", ">", ">>", "~", "@", "$"];
-const CK_DIG = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
-const CK_L1 = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
-const CK_L2 = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
-const CK_L3 = ["z", "x", "c", "v", "b", "n", "m"];
+function ckChip(tok) {
+  const s = activeSession();
+  if (!s || s.dead) { toast("没有可用的活动终端", true); return; }
+  const spacer = tok.endsWith("/") || tok.endsWith(" ") ? "" : " ";
+  ckSend(tok + spacer);
+}
+
+// F1-F12 标准终端序列
+const FN_SEQ = { F1: "\x1bOP", F2: "\x1bOQ", F3: "\x1bOR", F4: "\x1bOS", F5: "\x1b[15~", F6: "\x1b[17~", F7: "\x1b[18~", F8: "\x1b[19~", F9: "\x1b[20~", F10: "\x1b[21~", F11: "\x1b[23~", F12: "\x1b[24~" };
+
+// ---- 键表:PC 式行(行首行尾为放大键 m>1;字母显示大写、发送小写,由 Shift/Caps 决定大小写) ----
+const letter = (c, m) => ({ l: c.toLowerCase(), ch: c.toLowerCase(), m: m || 1 });
+const K_ROW_FN = [{ l: "Esc", s: "\x1b", m: 0.8 }, { l: "F1", s: FN_SEQ.F1, m: 0.7 }, { l: "F2", s: FN_SEQ.F2, m: 0.7 }, { l: "F3", s: FN_SEQ.F3, m: 0.7 }, { l: "F4", s: FN_SEQ.F4, m: 0.7 }, { l: "F5", s: FN_SEQ.F5, m: 0.7 }, { l: "F6", s: FN_SEQ.F6, m: 0.7 }, { l: "F7", s: FN_SEQ.F7, m: 0.7 }, { l: "F8", s: FN_SEQ.F8, m: 0.7 }, { l: "F9", s: FN_SEQ.F9, m: 0.7 }, { l: "F10", s: FN_SEQ.F10, m: 0.7 }, { l: "F11", s: FN_SEQ.F11, m: 0.7 }, { l: "F12", s: FN_SEQ.F12, m: 0.7 }];
+const K_ROW_SYM = [["/"], ["-"], ["_"], ["."], [".."], [":"], ["="], ["|"], ["&"], [";"], [">"], [">>"], ["~"], ["$"], ["*"], ["2>&1"]].map((a) => ({ l: a[0], ch: a[0] }));
+const K_ROW_NUM = [{ l: "`", ch: "`" }, { l: "1", ch: "1" }, { l: "2", ch: "2" }, { l: "3", ch: "3" }, { l: "4", ch: "4" }, { l: "5", ch: "5" }, { l: "6", ch: "6" }, { l: "7", ch: "7" }, { l: "8", ch: "8" }, { l: "9", ch: "9" }, { l: "0", ch: "0" }, { l: "-", ch: "-" }, { l: "=", ch: "=" }, { l: "⌫", s: "\x7f", m: 1.9 }];
+const K_ROW_Q = [{ l: "Tab", s: "\t", m: 1.6 }, letter("q"), letter("w"), letter("e"), letter("r"), letter("t"), letter("y"), letter("u"), letter("i"), letter("o"), letter("p"), { l: "[", ch: "[" }, { l: "]", ch: "]" }, { l: "\\", ch: "\\", m: 1.5 }];
+const K_ROW_A = [{ mod: "caps", l: "Caps", m: 1.9 }, letter("a"), letter("s"), letter("d"), letter("f"), letter("g"), letter("h"), letter("j"), letter("k"), letter("l"), { l: ";", ch: ";" }, { l: "'", ch: "'" }, { l: "回车", s: "\r", m: 2.4 }];
+const K_ROW_Z = [{ mod: "shift", l: "Shift", m: 2.4 }, letter("z"), letter("x"), letter("c"), letter("v"), letter("b"), letter("n"), letter("m"), { l: ",", ch: "," }, { l: ".", ch: "." }, { l: "/", ch: "/" }, { mod: "shift", l: "Shift", m: 2.4 }];
+const K_ROW_ARR = [{ l: "←", s: "\x1b[D", m: 1.3 }, { l: "↑", s: "\x1b[A", m: 1.3 }, { l: "↓", s: "\x1b[B", m: 1.3 }, { l: "→", s: "\x1b[C", m: 1.3 }];
+// 第二页扩展功能键(Home/End/翻页/插入/删除)+ 底排
+const K_ROW_NAV = [
+  { l: "Home", s: "\x1b[H", m: 1.2 }, { l: "End", s: "\x1b[F", m: 1.2 },
+  { l: "PgUp", s: "\x1b[5~", m: 1.2 }, { l: "PgDn", s: "\x1b[6~", m: 1.2 },
+  { l: "Ins", s: "\x1b[2~", m: 1.2 }, { l: "Del", s: "\x1b[3~", m: 1.2 },
+];
+const K_ROW_BASE2 = [
+  { mod: "ctrl", l: "Ctrl", m: 1.8 }, { mod: "alt", l: "⌥Alt", m: 1.5 },
+  { l: "空格", ch: " ", m: 4.5 }, { mod: "sys", l: "⌨", m: 1.3 }, { mod: "close", l: "收起", m: 1.6 },
+];
+
+/* ===== 新分页键表:
+   第一页=纯字母打字(芯片+QWERTY+空格/回车/退格,附带「123 ▸」跳第二页)
+   第二页=数字/符号/功能/修饰 全部收拢 ===== */
+const ROW_P1_Q = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"].map((c) => letter(c, 1));
+const ROW_P1_A = ["a", "s", "d", "f", "g", "h", "j", "k", "l"].map((c) => letter(c, 1));
+const ROW_P1_Z = ["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"].map((c) => letter(c, 1));
+const ROW_P1_BASE = [
+  { l: "⌫", s: "\x7f", m: 1.4 },
+  { l: "Tab", s: "\t", m: 1.4 },
+  { mod: "shift", l: "Shift", m: 1.7 },
+  { l: "空格", ch: " ", m: 4.4 },
+  { l: "回车", s: "\r", m: 1.9 },
+  { mod: "p2", l: "123 ▸", m: 1.5 },
+];
+const ROW_P2_MODS = [
+  { mod: "shift", l: "Shift", m: 1.6 },
+  { mod: "caps", l: "Caps", m: 1.6 },
+  { mod: "ctrl", l: "Ctrl", m: 1.5 },
+  { mod: "alt", l: "⌥Alt", m: 1.4 },
+  { l: "空格", ch: " ", m: 4 },
+  { mod: "p1", l: "⇤ 打字", m: 1.6 },
+  { mod: "close", l: "收起", m: 1.3 },
+];
+const K_ROW_BASE = [{ mod: "ctrl", l: "Ctrl", m: 1.7 }, { mod: "alt", l: "⌥Alt", m: 1.4 }, { l: "空格", ch: " ", m: 5 }, { mod: "alt", l: "⌥Alt", m: 1.4 }, { mod: "ctrl", l: "Ctrl", m: 1.7 }, { mod: "sys", l: "⌨", m: 1.2 }, { mod: "close", l: "收起", m: 1.4 }];
+
+function ckSend(seq) {
+  const s = activeSession();
+  if (!s || s.dead) { toast("没有可用的活动终端", true); return; }
+  wsSend({ type: "input", data: { term_id: s.termID, data_b64: toB64(seq) } });
+}
 
 function ckCtrlCode(ch) {
   const c = ch.toLowerCase();
@@ -631,84 +707,175 @@ function ckCtrlCode(ch) {
   return null;
 }
 
-function ckSend(seq) {
-  const s = activeSession();
-  if (!s || s.dead) { toast("没有可用的活动终端", true); return; }
-  if (document.activeElement && document.activeElement.blur) { try { document.activeElement.blur(); } catch (e) {} }
-  wsSend({ type: "input", data: { term_id: s.termID, data_b64: toB64(seq) } });
-}
-
-function ckKeyTap(ch) {
-  let seq;
+// 可打印键:按 修饰键 状态转换为最终字节序列直发终端
+function ckTapChar(ch) {
+  let out;
   if (ckState.ctrl) {
     const code = ckCtrlCode(ch);
-    seq = code !== null ? code : ch; // Ctrl 组合(组合键为一次性)
+    out = code !== null ? code : ch; // Ctrl 组合为一次性
     ckState.ctrl = false;
   } else {
-    seq = ckState.shift ? ch.toUpperCase() : ch; // Shift 为粘滞,再次点击取消
+    const upper = ckState.caps || ckState.shift; // Caps 粘滞 / Shift 单次
+    out = upper ? ch.toUpperCase() : ch;
+    if (ckState.alt) out = "\x1b" + out; // Alt+字符 = ESC 前缀
+    if (ckState.shift && !ckState.caps) ckState.shift = false;
+    if (ckState.alt) ckState.alt = false;
   }
   ckRenderMods();
-  ckSend(seq);
+  ckSend(out);
 }
+
+function ckMod(mod) {
+  switch (mod) {
+    case "shift":
+      ckState.shift = !ckState.shift; ckState.ctrl = false; ckState.alt = false; break;
+    case "caps":
+      ckState.caps = !ckState.caps; ckState.shift = false; break;
+    case "ctrl":
+      ckState.ctrl = !ckState.ctrl; ckState.shift = false; ckState.alt = false; break;
+    case "alt":
+      ckState.alt = !ckState.alt; ckState.ctrl = false; break;
+    case "sys": ckSystemKb(); return;
+    case "close": ckOpen(false); return;
+    case "p1": ckPageTo(0); return;
+    case "p2": ckPageTo(1); return;
+  }
+  ckRenderMods();
+}
+
+// 修饰键高亮/文本统一刷新(两页同种修饰键全部生效,见文件末尾定义)
 
 function ckBuild() {
   const box = $("#consoleKeys");
   box.innerHTML = "";
-  const keyEl = (label, cls, onClick) => {
+  const mkKey = (it) => {
     const b = document.createElement("button");
-    b.className = "ck-key" + (cls ? " " + cls : "");
-    b.textContent = label;
-    b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); onClick(); });
+    b.className = "ck-key";
+    b.textContent = it.l;
+    b.style.flexGrow = String(it.m || 1);
+    b.style.flexBasis = "0%";
+    b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+    if (it.s !== undefined && it.ch === undefined) {
+      b.addEventListener("click", () => ckSend(it.s)); // 功能/控制键(直接序列)
+    } else if (it.mod) {
+      b.addEventListener("click", () => ckMod(it.mod));
+      b.dataset.mod = it.mod; // 高亮/文本由 ckRenderMods 按 data-mod 全量刷新
+      b.classList.add("mod");
+    } else {
+      b.addEventListener("click", () => ckTapChar(it.ch !== undefined ? it.ch : it.l)); // 字符键
+    }
     return b;
   };
-  const addRow = (arr, cls) => {
+  const addRow = (page, items, cls) => {
     const row = document.createElement("div");
     row.className = "ck-row" + (cls ? " " + cls : "");
-    for (const k of arr) {
-      row.appendChild(keyEl(k.l, k.wide ? "wide" : "", () => ckKeyTap(k.s)));
-    }
-    box.appendChild(row);
+    for (const it of items) row.appendChild(mkKey(it));
+    page.appendChild(row);
   };
-  addRow(CK_SPECIAL, "special");
-  addRow(CK_SYM.map((s) => ({ l: s, s: s })));
-  addRow(CK_DIG.map((s) => ({ l: s, s: s })));
-  addRow(CK_L1.map((s) => ({ l: s, s: s })));
-  addRow(CK_L2.map((s) => ({ l: s, s: s })));
-  addRow(CK_L3.map((s) => ({ l: s, s: s })));
-  // 修饰行:Shift / Ctrl / 空格 / 回车 / 收起
-  const modRow = document.createElement("div");
-  modRow.className = "ck-row";
-  ckShiftKey = keyEl("⇧ Shift", "mod wide", () => {
-    ckState.shift = !ckState.shift;
-    ckState.ctrl = false;
-    ckRenderMods();
-  });
-  ckCtrlKey = keyEl("Ctrl", "mod wide", () => {
-    ckState.ctrl = !ckState.ctrl;
-    ckState.shift = false;
-    ckRenderMods();
-  });
-  const spKey = keyEl("空格", "space", () => ckSend(" "));
-  const enKey = keyEl("↵ 回车", "mod", () => ckSend("\r"));
-  const clKey = keyEl("收起 ⌄", "mod", () => ckOpen(false));
-  modRow.append(ckShiftKey, ckCtrlKey, spKey, enKey, clKey);
-  box.appendChild(modRow);
+
+  // 双页滑动:第一页打字键,第二页功能键
+  const track = document.createElement("div");
+  track.className = "ck-track";
+  const p1 = document.createElement("div");
+  p1.className = "ck-page";
+  const p2 = document.createElement("div");
+  p2.className = "ck-page";
+
+  // ---- 第一页:快捷命令芯片 + 纯字母 QWERTY + 空格/回车/退格 ----
+  const chipRow = document.createElement("div");
+  chipRow.className = "ck-chiprow";
+  for (const t of CK_CHIPS) {
+    const c = document.createElement("button");
+    c.className = "ck-key chip";
+    c.textContent = t;
+    c.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); ckChip(t); });
+    chipRow.appendChild(c);
+  }
+  p1.appendChild(chipRow);
+  addRow(p1, ROW_P1_Q);
+  addRow(p1, ROW_P1_A);
+  addRow(p1, ROW_P1_Z);
+  addRow(p1, ROW_P1_BASE);
+
+  // ---- 第二页:数字+符号 + F1-F12/Home等/方向 + Shift/Caps/Ctrl/Alt ----
+  addRow(p2, K_ROW_NUM);
+  addRow(p2, K_ROW_SYM);
+  addRow(p2, K_ROW_FN, "fn");
+  addRow(p2, K_ROW_NAV);
+  addRow(p2, K_ROW_ARR);
+  addRow(p2, ROW_P2_MODS);
+
+  track.append(p1, p2);
+  box.appendChild(track);
+  ckPageTo(0); // 页圆点指示已移除,滑动/键盘区仍可翻页
 }
 
-let ckShiftKey = null, ckCtrlKey = null;
+/* ---- 双页切换(左右滑动 / 圆点点击) ---- */
+let ckPg = 0;
+function ckPageTo(i) {
+  i = Math.max(0, Math.min(1, i));
+  ckPg = i;
+  const t = document.querySelector("#consoleKeys .ck-track");
+  if (t) t.style.transform = "translateX(-" + (i * 50) + "%)";
+  document.querySelectorAll("#consoleKeys .ck-dots i").forEach((d, j) => {
+    d.classList.toggle("on", j === i);
+  });
+}
+function ckPageStep(d) { ckPageTo(ckPg + d); }
+function bindCkPaging() {
+  const kb = $("#consoleKeys");
+  let sx = null, sy = null;
+  const clear = () => { sx = null; sy = null; };
+  kb.addEventListener("pointerdown", (ev) => {
+    if (ev.target.closest(".ck-dots")) return;
+    if (ev.pointerType === "mouse" && ev.button !== 0) return;
+    sx = ev.clientX; sy = ev.clientY;
+  });
+  kb.addEventListener("pointerup", (ev) => {
+    if (sx === null) return;
+    const dx = ev.clientX - sx, dy = ev.clientY - sy;
+    if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      ckPageStep(dx < 0 ? 1 : -1);
+    }
+    clear();
+  });
+  kb.addEventListener("pointercancel", clear);
+  kb.addEventListener("click", (ev) => {
+    const dot = ev.target.closest(".ck-dots i");
+    if (dot) ckPageTo(parseInt(dot.dataset.i, 10));
+  });
+}
+
+// 唤起系统软键盘:聚焦活动终端(点击真机即弹系统键盘)
+function ckSystemKb() {
+  const s = activeSession();
+  if (!s || !s.term) { toast("没有可用的活动终端", true); return; }
+  try { s.term.focus(); } catch (e) {}
+  setTimeout(() => { try { s.term.focus(); } catch (e) {} }, 120);
+  const ta = s.term.textarea;
+  if (ta && ta.scrollIntoView) { try { ta.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} }
+}
 
 function ckRenderMods() {
-  if (ckShiftKey) ckShiftKey.classList.toggle("armed", ckState.shift);
-  if (ckCtrlKey) {
-    ckCtrlKey.classList.toggle("armed", ckState.ctrl);
-    ckCtrlKey.textContent = ckState.ctrl ? "Ctrl ⦿" : "Ctrl";
-  }
+  const st = {
+    shift: { on: ckState.shift, txt: "Shift" },
+    caps: { on: ckState.caps, txt: "Caps" },
+    ctrl: { on: ckState.ctrl, txt: "Ctrl" },
+    alt: { on: ckState.alt, txt: "⌥Alt" },
+  };
+  document.querySelectorAll("#consoleKeys .ck-key.mod[data-mod]").forEach((el) => {
+    const m = st[el.dataset.mod];
+    if (!m) return;
+    el.classList.toggle("armed", m.on);
+    el.textContent = m.on ? m.txt + " ⦿" : m.txt;
+  });
 }
 
 function ckOpen(open) {
   ckState.open = !!open;
   const kb = $("#consoleKeys");
-  kb.classList.toggle("show", ckState.open);
+  kb.classList.toggle("show", !!open);
+  kb.classList.toggle("hidden", !open); // 去掉 markup 初始 hidden,否则 !important 压住面板
   $("#ckFloat").classList.toggle("show", isMobileNow() && !ckState.open);
   scheduleFit();
 }

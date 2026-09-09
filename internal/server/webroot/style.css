@@ -246,6 +246,9 @@ html.is-mobile .brand-sub { display: none; }
 html.is-mobile .who { display: none; }
 html.is-mobile #btnReconnect { font-size: 11px; padding: 2px 8px; }
 html.is-mobile .layout { height: calc(100vh - var(--topbar-h)); }
+@supports (height: 100dvh) {
+  html.is-mobile .layout { height: calc(100dvh - var(--topbar-h)); }
+}
 
 /* ---- 两屏切换 ---- */
 html.is-mobile .sidebar,
@@ -255,7 +258,7 @@ html.is-mobile[data-v="term"] .workspace { display: flex; }
 
 html.is-mobile .sidebar { border-right: none; min-width: 0; }
 html.is-mobile .side-search { padding: 10px 10px 8px; }
-html.is-mobile .agent-list { padding: 6px 8px calc(60px); } /* 给底部导航留位 */
+html.is-mobile .agent-list { padding: 6px 8px calc(48px); } /* 给底部导航留位 */
 html.is-mobile .agent-item { padding: 8px 10px 8px 12px; border-radius: 8px; }
 html.is-mobile .a-id { display: none; }
 html.is-mobile .agent-item .a-meta { font-size: 10.5px; }
@@ -280,14 +283,14 @@ html.is-mobile #mobileNav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
   display: flex; border-top: 1px solid var(--border);
   background: rgba(17, 22, 31, .96); backdrop-filter: blur(8px);
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding: 3px 0 calc(2px + env(safe-area-inset-bottom, 0));
 }
 html.is-mobile .mnav-btn {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
-  padding: 7px 0 6px; border: none; background: transparent;
-  color: var(--dim); font-size: 10px; cursor: pointer;
+  flex: 1; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4px;
+  padding: 0; height: 30px; border: none; background: transparent;
+  color: var(--dim); font-size: 11px; cursor: pointer;
 }
-html.is-mobile .mnav-btn .mnav-ico { font-size: 17px; line-height: 1.2; }
+html.is-mobile .mnav-btn .mnav-ico { font-size: 14px; line-height: 1; }
 html.is-mobile .mnav-btn.active { color: var(--accent2); }
 html.is-mobile .mnav-cnt {
   min-width: 15px; height: 15px; border-radius: 99px; padding: 0 4px;
@@ -304,7 +307,8 @@ html.is-mobile .toast { max-width: none; }
 /* ============================================================
    手机端控制台专属键盘(console keyboard)
    ============================================================ */
-html.is-mobile .term-host { margin-bottom: calc(52px + env(safe-area-inset-bottom, 0)); }
+html.is-mobile .workspace { padding-bottom: calc(42px + env(safe-area-inset-bottom, 0)); overflow: hidden; }
+html.is-mobile .ck-row:last-child { padding-bottom: calc(4px + env(safe-area-inset-bottom, 0)); }
 html.is-mobile .ck { display: none; }
 html.is-mobile[data-v="term"] .ck.show { display: block; }
 
@@ -344,3 +348,140 @@ html.is-mobile[data-v="term"] .ck.show { display: block; }
 }
 html.is-mobile .ck-float.show { display: inline-flex; }
 .ck-float:active { background: var(--accent2); color: #071018; }
+
+/* ---- 手机端弹层与 Toast 适配 ---- */
+html.is-mobile .modal-card { width: calc(100vw - 24px); }
+html.is-mobile .login-card { width: calc(100vw - 40px); }
+html.is-mobile #toastWrap { left: 12px; right: 12px; bottom: calc(64px + env(safe-area-inset-bottom, 0)); }
+html.is-mobile .toast { max-width: none; }
+
+/* ============================================================
+   手机端控制台专属键盘(console keyboard)
+   ============================================================ */
+html.is-mobile .workspace { padding-bottom: calc(42px + env(safe-area-inset-bottom, 0)); overflow: hidden; }
+html.is-mobile .ck-row:last-child { padding-bottom: calc(4px + env(safe-area-inset-bottom, 0)); }
+html.is-mobile .ck { display: none; }
+html.is-mobile[data-v="term"] .ck.show { display: block; }
+
+.ck {
+  order: 9;
+  flex: none;
+  background: rgba(13, 17, 25, .97);
+  border-top: 1px solid var(--border);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ck-row { display: flex; gap: 4px; padding: 3px 6px; }
+.ck-row.special { padding-top: 5px; }
+.ck-key {
+  flex: 1 1 auto; min-width: 0; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel2); color: var(--text);
+  font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer; line-height: 1; padding: 0 2px;
+}
+.ck-key:active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.ck-key.wide { flex: 2.2 1 auto; }
+.ck-key.space { flex: 6 1 auto; }
+.ck-key.mod { font-size: 10.5px; color: var(--dim); }
+.ck-key.armed { background: var(--accent2); color: #071018; border-color: var(--accent2); font-weight: 700; }
+.ck-key .ck-sub { font-size: 9px; color: var(--dim); margin-left: 2px; }
+
+/* 悬浮按钮(键盘折叠时出现) */
+.ck-float {
+  display: none;
+  position: fixed; right: 12px; bottom: calc(58px + env(safe-area-inset-bottom, 0));
+  z-index: 95; width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--accent); background: rgba(17, 22, 31, .9);
+  color: var(--accent2); font-size: 18px; cursor: pointer;
+  align-items: center; justify-content: center;
+}
+html.is-mobile .ck-float.show { display: inline-flex; }
+.ck-float:active { background: var(--accent2); color: #071018; }
+
+/* ---- 手机端命令输入行(真机必弹软键盘的普通 input) ---- */
+.osk-bar { display: none; }
+html.is-mobile[data-v="term"] .osk-bar { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
+.osk-input {
+  flex: 1 1 auto; min-width: 0; height: 34px;
+  border: 1px solid var(--accent); border-radius: 8px;
+  background: #0a0e14; color: var(--text);
+  font-size: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 0 10px; outline: none;
+}
+.osk-input::placeholder { color: var(--dim); }
+.osk-input:focus { border-color: var(--accent2); box-shadow: 0 0 0 2px rgba(56,189,248,.18); }
+.osk-hide {
+  flex: none; width: 30px; height: 30px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--panel2); color: var(--dim);
+  cursor: pointer; font-size: 15px; line-height: 1;
+}
+
+/* ---- 命令快捷芯片 + 键盘限高 ---- */
+.ck { max-height: 44vh; overflow-y: auto; overscroll-behavior: contain; }
+.ck-chiprow {
+  display: flex; gap: 5px; padding: 5px 6px 2px;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.ck-chiprow::-webkit-scrollbar { display: none; }
+.ck-key.chip {
+  flex: none; padding: 0 11px; height: 30px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+  color: #7dd3fc; border-color: rgba(56,189,248,.45); background: rgba(56,189,248,.08);
+}
+.ck-key.chip:active { background: var(--accent2); color: #071018; }
+
+/* ---- PC 式键盘:行更密、键帽更接近电脑、修饰/功能键紧凑 ---- */
+.ck-row { gap: 3px; padding: 2px 5px; }
+.ck-key { height: 30px; font-size: 12px; padding: 0 1px; border-radius: 6px; }
+.ck-key.mod { font-size: 10px; color: var(--dim); }
+.ck-row.fn .ck-key { height: 22px; font-size: 9px; border-radius: 4px; }
+.ck { flex: 0 1 auto; min-height: 0; max-height: 44vh; }
+@supports (max-height: 44dvh) { .ck { max-height: 44dvh; } }
+.ck-chiprow { gap: 5px; padding: 4px 5px 2px; }
+.ck-key.chip { font-size: 11px; }
+
+/* ---- 双页滑动键盘 ----
+   第一页:芯片+符号+数字+QWERTY+底排
+   第二页:F1-F12 / Home等 / 方向键 / 底排
+   左右滑动或点圆点翻页 */
+.ck { display: flex; flex-direction: column; overflow: hidden; }
+.ck-track {
+  display: flex; flex: 1 1 0%; min-height: 0;
+  width: 200%; overflow: hidden;
+  transition: transform .22s ease; will-change: transform;
+}
+.ck-page {
+  flex: none; width: 50%; max-width: 50%;
+  overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+  scrollbar-width: none; padding-bottom: 2px;
+}
+.ck-page::-webkit-scrollbar { display: none; }
+.ck-dots {
+  flex: none; display: flex; justify-content: center; gap: 7px;
+  padding: 2px 0 4px;
+}
+.ck-dots i {
+  width: 6px; height: 6px; border-radius: 99px; background: var(--border);
+  transition: .18s; cursor: pointer;
+}
+.ck-dots i.on { width: 18px; background: var(--accent2); }
+
+/* ---- 键盘面板加大 + 键行弹性拉伸(消空白、键更大) ---- */
+.ck { height: 37vh; max-height: 52vh; }
+@supports (height: 46dvh) {
+  .ck { height: 37dvh; max-height: 52dvh; }
+}
+.ck-page { display: flex; flex-direction: column; }
+.ck-page .ck-chiprow { flex: none; }
+.ck-page .ck-row { flex: 1 1 auto; min-height: 30px; align-items: stretch; }
+.ck-page .ck-row.fn .ck-key { min-height: 26px; }
+.ck-page .ck-key { height: auto; min-height: 30px; font-size: 13px; }
+.ck-page .ck-key.mod { font-size: 11px; }
+.ck-page .ck-row.fn .ck-key { font-size: 10px; height: auto; }
+.ck-page .ck-row { padding: 2px 5px; gap: 2px; }
+.ck-page .ck-row.fn { padding: 1px 5px; }
+.ck-dots { padding: 4px 0 6px; }
+.ck-track { height: 100%; }
+.ck-page { height: 100%; }
