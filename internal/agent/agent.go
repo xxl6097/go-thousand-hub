@@ -27,7 +27,19 @@ import (
 	"github.com/xxl6097/go-thousand-hub/pkg/agent/m"
 )
 
-const Version = "1.0.0"
+// DefaultVersion 内置版本号(未做任何定制时使用)。
+const DefaultVersion = "1.0.0"
+
+// Version 默认版本号,可被编译期注入覆盖:
+//
+//	go build -ldflags "-X github.com/xxl6097/go-thousand-hub/internal/agent.Version=v2.0.1"
+//
+// 生效优先级(高 → 低):
+//  1. m.Options.Version           —— 第三方代码注入(推荐,见 pkg/agent)
+//  2. RC_AGENT_VERSION / -version —— 运维在部署时指定(cmd/agent/main.go)
+//  3. 本变量                       —— 编译期 -ldflags 注入
+//  4. DefaultVersion              —— 内置兜底
+var Version = DefaultVersion
 
 // Agent 常驻客户端
 type Agent struct {
@@ -48,6 +60,7 @@ type Agent struct {
 
 func New(opts m.Options) *Agent {
 	host, _ := os.Hostname()
+	opts.Version = strings.TrimSpace(opts.Version) // 容忍 " v1.2.3 " 这类配置写法
 	a := &Agent{
 		opts:    opts,
 		shell:   defaultShell(),
@@ -61,6 +74,17 @@ func New(opts m.Options) *Agent {
 		a.name = host
 	}
 	return a
+}
+
+// version 生效版本号:业务定制 > 编译期注入 > 内置默认
+func (a *Agent) version() string {
+	if a.opts.Version != "" {
+		return a.opts.Version
+	}
+	if Version != "" {
+		return Version
+	}
+	return DefaultVersion
 }
 
 // Run 主循环:启动信号监听 + 无限重连
@@ -157,7 +181,7 @@ func (a *Agent) connectOnce(ctx context.Context) error {
 func (a *Agent) sendHello(c *websocket.Conn) error {
 	goos, arch := osInfo()
 	hello := protocol.Hello{
-		Version:  Version,
+		Version:  a.version(),
 		Hostname: a.host,
 		Name:     a.name,
 		OS:       goos,

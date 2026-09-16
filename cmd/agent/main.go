@@ -28,6 +28,7 @@ func main() {
 		interval = flag.Duration("interval", envDur("RC_INTERVAL", 5*time.Second), "指标上报周期")
 		caFile   = flag.String("ca-file", envOr("RC_CA_FILE", ""), "自定义 CA 证书路径(wss 自签证书场景)")
 		insecure = flag.Bool("insecure", envBool("RC_INSECURE"), "跳过 TLS 证书校验(仅测试/内网)")
+		version  = flag.String("version", envOr("RC_AGENT_VERSION", ""), "自定义 agent 版本号(留空用内置版本;也可由代码 m.Options.Version 指定)")
 	)
 	flag.Parse()
 
@@ -53,6 +54,7 @@ func main() {
 		Interval:  *interval,
 		CAData:    cadata,
 		Insecure:  *insecure,
+		Version:   *version, // 留空则回退到内置版本 / 编译期 -ldflags 注入值
 	}
 
 	// log.Printf("rc-agent %s 启动(server=%s name=%s idFile=%s)", agent.Version, *server, nameLabel(*name), *idFile)

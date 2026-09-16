@@ -174,6 +174,7 @@ agent 常用参数(均可用环境变量替代 flag):
 | `-interval` | `RC_INTERVAL` | `5s` | 指标上报周期 |
 | `-ca-file` | `RC_CA_FILE` | 空 | 自定义 CA 证书路径;服务端用自签证书时必填,agent 以此校验 wss 服务端 |
 | `-insecure` | `RC_INSECURE` | false | 跳过 TLS 校验(仅测试/纯内网,慎用) |
+| `-version` | `RC_AGENT_VERSION` | 内置 `1.0.0` | 自定义 agent 版本号;也可由代码 `m.Options.Version` 或编译期 `-ldflags` 指定,见 [6.2](#62-版本号扩展点version) |
 
 ---
 
@@ -243,6 +244,33 @@ pub.New(&opts, ctx)                                // pkg/agent
 
 > 容错语义:三个回调均为**可选**(未实现/返回 nil 即跳过);返回的 error 与内部 panic 都只记录日志、
 > **不阻断**卸载主流程;每个回调限时 10s。接口定义见 `pkg/agent/m/hooks.go`(含 `UninstallHookFuncs` 适配器)。
+
+### 6.2 版本号扩展点(Version)
+
+agent 版本号默认内置为 `1.0.0`,二次开发者可把它换成自己产品的版本体系,
+**无需修改 rc-agent 源码**。三种方式优先级从高到低:
+
+| 优先级 | 方式 | 适用场景 | 写法 |
+|---|---|---|---|
+| 1 | **代码注入** `m.Options.Version` | 第三方二次开发/内嵌 agent | `opts.Version = "v2.1.0"` |
+| 2 | **部署配置** `RC_AGENT_VERSION` / `-version` | 原样使用官方二进制,运维侧标注 | `RC_AGENT_VERSION=v2.1.0 ./rc-agent` |
+| 3 | **编译期注入** `-ldflags -X` | 自建 CI 出包时打版本 | `go build -ldflags "-X github.com/xxl6097/go-thousand-hub/internal/agent.Version=v2.1.0"` |
+| 4 | 内置 `DefaultVersion` | 都不指定时兜底 | — |
+
+```go
+opts := &m.Options{ServerURL: ..., Token: ...}
+opts.Version = myProductVersion            // ← 一行注入,留空则走后面的回退
+pub.New(opts, ctx)                         // pkg/agent
+```
+
+生效范围:
+
+- 随 `hello` 上报服务端,控制台主机卡片显示 `agent v2.1.0`;
+- 卸载扩展点上下文 `m.UninstallInfo.Version` 同步带上,便于按版本统计/审计(`info.Version`)。
+
+> 版本号仅做标识与展示,不参与服务端鉴权或兼容性判断;首尾空白会被自动裁剪。
+> 单测覆盖见 `internal/agent/version_test.go`(默认/定制/空白/回退/卸载上下文 5 个用例)。
+> 完整可运行示例:[`examples/agent-custom-version`](examples/agent-custom-version/main.go)
 
 ## 七、运维说明
 

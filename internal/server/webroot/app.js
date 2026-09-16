@@ -442,7 +442,9 @@ function agentItem(a) {
     }
     const tip = document.createElement("div");
     tip.className = "a-shell";
-    const load = m ? `load ${m.load1.toFixed ? m.load1.toFixed(2) : "—"} · 运行 ${fmtUptime(m.uptime_sec)} · agent v${a.version || ""}` : `等待指标… · agent v${a.version || ""}`;
+    const ver = (a.version || "").trim();
+    const verTxt = ver ? (/^[vV]/.test(ver) ? ver : "v" + ver) : ""; // 第三方版本号可能自带 v 前缀,避免显示成 vv
+    const load = m ? `load ${m.load1.toFixed ? m.load1.toFixed(2) : "—"} · 运行 ${fmtUptime(m.uptime_sec)} · agent ${verTxt}` : `等待指标… · agent ${verTxt}`;
     tip.textContent = load;
     el.appendChild(tip);
   }
@@ -563,8 +565,13 @@ function openSession(agent) {
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   s.dec = new TextDecoder("utf-8");
+  // 关键:先激活面板再 open。若在 display:none 容器中初始化 xterm,
+  // 渲染器尺寸不会就绪,fit.fit() 全部失效,终端会永久停留在默认 80x24 小块。
+  pane.classList.add("active");
   term.open(pane);
   fit.fit();
+  // 渲染器首帧可能在下一帧才就绪,再兜底 fit 一次
+  requestAnimationFrame(() => { try { fit.fit(); } catch (e) {} });
   s.term = term; s.fit = fit;
 
   term.onData((data) => {
@@ -718,6 +725,51 @@ function bindMobileUI() {
 /* ============ 手机端虚拟键盘(完整 PC 式布局,按键直通终端) ============ */
 const ckState = { open: false, shift: false, caps: false, ctrl: false, alt: false };
 
+/* ---- 按键触感反馈:短震 + 合成按键音(无外部音频资源) ----
+   震动依赖 navigator.vibrate(Android 支持;iOS Safari 不支持则静默跳过)
+   声音用 Web Audio 实时合成短促"嗒"声,首次按键时才创建 AudioContext(满足自动播放策略) */
+let ckAudio = null;
+function ckFeedback(kind) {
+  try { if (navigator.vibrate) navigator.vibrate(kind === "mod" ? 22 : 9); } catch (e) {}
+  try {
+    if (!ckAudio) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ckAudio = new AC();
+    }
+    if (ckAudio.state === "suspended") ckAudio.resume();
+    const t = ckAudio.currentTime;
+    const osc = ckAudio.createOscillator();
+    const g = ckAudio.createGain();
+    osc.type = "square";
+    const f0 = kind === "mod" ? 430 : 1350, f1 = kind === "mod" ? 260 : 760;
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(f1, t + 0.03);
+    g.gain.setValueAtTime(0.05, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    osc.connect(g).connect(ckAudio.destination);
+    osc.start(t);
+    osc.stop(t + 0.06);
+  } catch (e) {}
+}
+
+/* ---- iOS 触感:Apple 不支持 navigator.vibrate,但 Safari 17.4+ 的原生
+   <input type="checkbox" switch> 被手指真实点按时会触发系统触感;
+   且 iOS 26.5+ 只认真实点按(脚本模拟点击无效)。
+   做法:每个按键上叠一层透明原生 switch,手指直接点在控件上 → 触感 + click 冒泡到按键逻辑 */
+const CK_IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS 桌面 UA
+function ckAddHaptic(b) {
+  if (!CK_IS_IOS) return;
+  const inp = document.createElement("input");
+  inp.type = "checkbox";
+  inp.setAttribute("switch", ""); // Apple 专有:渲染为原生开关,点按带系统触感
+  inp.className = "ck-hap";
+  inp.tabIndex = -1;
+  inp.setAttribute("aria-hidden", "true");
+  b.appendChild(inp);
+}
+
 // Linux 运维/命令高频快捷词(点按即把命令敲入终端,可继续补参数再按回车)
 const CK_CHIPS = [
   "clear", "sudo", "systemctl", "ls -lh", "ls -la", "cd ..", "cat", "grep",
@@ -842,16 +894,21 @@ function ckBuild() {
     b.textContent = it.l;
     b.style.flexGrow = String(it.m || 1);
     b.style.flexBasis = "0%";
-    b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+    b.addEventListener("click", (ev) => {
+      // iOS 触感层冒泡上来的点按不拦截:preventDefault 会取消原生开关切换(连带触感)
+      if (ev.target.classList && ev.target.classList.contains("ck-hap")) return;
+      ev.preventDefault(); ev.stopPropagation();
+    });
     if (it.s !== undefined && it.ch === undefined) {
-      b.addEventListener("click", () => ckSend(it.s)); // 功能/控制键(直接序列)
+      b.addEventListener("click", () => { ckFeedback(); ckSend(it.s); }); // 功能/控制键(直接序列)
     } else if (it.mod) {
-      b.addEventListener("click", () => ckMod(it.mod));
+      b.addEventListener("click", () => { ckFeedback("mod"); ckMod(it.mod); }); // 修饰/面板键用更重的反馈
       b.dataset.mod = it.mod; // 高亮/文本由 ckRenderMods 按 data-mod 全量刷新
       b.classList.add("mod");
     } else {
-      b.addEventListener("click", () => ckTapChar(it.ch !== undefined ? it.ch : it.l)); // 字符键
+      b.addEventListener("click", () => { ckFeedback(); ckTapChar(it.ch !== undefined ? it.ch : it.l); }); // 字符键
     }
+    ckAddHaptic(b); // iOS:叠加原生 switch 触感层
     return b;
   };
   const addRow = (page, items, cls) => {
@@ -876,7 +933,8 @@ function ckBuild() {
     const c = document.createElement("button");
     c.className = "ck-key chip";
     c.textContent = t;
-    c.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); ckChip(t); });
+    c.addEventListener("click", (ev) => { if (!(ev.target.classList && ev.target.classList.contains("ck-hap"))) { ev.preventDefault(); ev.stopPropagation(); } ckFeedback(); ckChip(t); });
+    ckAddHaptic(c); // iOS:叠加原生 switch 触感层
     chipRow.appendChild(c);
   }
   p1.appendChild(chipRow);

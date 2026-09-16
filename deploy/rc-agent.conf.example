@@ -17,6 +17,12 @@ RC_NAME=web-server-01
 # agent ID 持久化路径(首次运行自动生成;删除后身份会变,一般不要动)
 RC_ID_FILE=/var/lib/rc-agent/id
 
+# ========== 版本号(可选,默认内置 1.0.0) ==========
+# 自定义 agent 版本号:控制台主机卡片会显示「agent vX」,卸载事件也带上它
+# 适合原样使用官方二进制、又想按自家版本体系标注被管端的场景;
+# 二次开发者可直接用代码 m.Options.Version 注入(优先级更高),见 docs/agent-version.md
+#RC_AGENT_VERSION=v2.1.0
+
 # ========== 指标上报 ==========
 # 心跳/指标上报周期(默认 5s;在线判定依赖它)
 #RC_INTERVAL=5s

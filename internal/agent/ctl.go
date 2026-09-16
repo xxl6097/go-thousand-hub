@@ -160,7 +160,7 @@ func (a *Agent) doUninstall() {
 func (a *Agent) uninstallInfo() m.UninstallInfo {
 	//这个地方是取的当前运行的执行文件
 	binpath, _ := os.Executable()
-	return m.UninstallInfo{AgentID: a.id, Name: a.name, Host: a.host, Version: Version, BinPath: binpath}
+	return m.UninstallInfo{AgentID: a.id, Name: a.name, Host: a.host, Version: a.version(), BinPath: binpath}
 }
 
 // callHook 统一调用扩展点:recover panic + 超时,错误只记录日志,绝不阻断卸载。
