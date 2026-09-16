@@ -8,6 +8,7 @@ type UninstallInfo struct {
 	Name    string // 控制台展示名
 	Host    string // 真实主机名
 	Version string // agent 版本号
+	BinPath string // 服务程序所在路径
 }
 
 // UninstallHook 卸载生命周期扩展点 —— 业务方按需实现,在 agent 执行「彻底卸载自身」时
