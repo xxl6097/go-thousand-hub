@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"os/exec"
 	"runtime"
@@ -11,7 +13,11 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/xxl6097/go-thousand-hub/internal/protocol"
+	"github.com/xxl6097/go-thousand-hub/pkg/agent/m"
 )
+
+// hookTimeout 单个业务扩展点的最长执行时间(超时即放弃,不拖住卸载)
+const hookTimeout = 10 * time.Second
 
 // handleHostCtl 处理服务端下发的主机控制指令。
 // 流程:校验动作 -> 立即回执 -> 异步执行破坏性动作(回执先于动作,避免执行瞬间断链丢回执)。
@@ -118,36 +124,120 @@ func restartSelf() error {
 }
 
 // doUninstall 彻底卸载 agent 自身安装的产物(不区分平台;删的是 agent 安装的文件,与操作系统无关)。
-// 流程:先回执 -> 以独立会话启动清理子进程 -> 自身稍候退出作为兜底。
+// 流程:先回执 -> [业务扩展 Before] -> [业务附加清理脚本] -> 以独立会话启动清理子进程
+// -> [业务扩展 After] -> 自身稍候退出作为兜底。
+//
+// 业务扩展点 = m.Options.Hook(m.UninstallHook);未注入时全部为空操作。
 func (a *Agent) doUninstall() {
+	ctx := context.Background()
+	info := a.uninstallInfo()
+
 	time.Sleep(400 * time.Millisecond) // 等回执落地
+
+	// 扩展点①:清理前的业务自定义处理(上报/注销/备份等)
+	a.hookBeforeUninstall(ctx, info)
+
+	// 扩展点②:业务附加清理脚本(如删业务 sidecar 文件),拼进清理脚本执行
+	extra := a.hookExtraCleanup(ctx, info)
+
 	// 清理子进程用 Setsid 脱离会话;关键:systemd 停服会杀整个 cgroup,
 	// 因此脚本把”停服/杀进程”放到最后一步(见 uninstallScript),保证文件先删完。
-	if err := startDetached("/bin/sh", "-c", uninstallScript()); err != nil {
+	if err := startDetached("/bin/sh", "-c", uninstallScript(extra)); err != nil {
 		// 启动失败也退出,避免半死状态
 		os.Exit(0)
 		return
 	}
+
+	// 扩展点③:清理已下发,agent 退出前最后一次业务收尾(发送"卸载完成"通知等)
+	a.hookAfterUninstall(ctx, info)
+
 	// 兜底:父进程稍候退出(无论 systemd 是否托管)
 	time.Sleep(2 * time.Second)
 	os.Exit(0)
 }
 
+// uninstallInfo 组装扩展点上下文
+func (a *Agent) uninstallInfo() m.UninstallInfo {
+	return m.UninstallInfo{AgentID: a.id, Name: a.name, Host: a.host, Version: Version}
+}
+
+// callHook 统一调用扩展点:recover panic + 超时,错误只记录日志,绝不阻断卸载。
+func callHook(step string, fn func(ctx context.Context) error) {
+	if fn == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), hookTimeout)
+	defer cancel()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[uninstall] 业务扩展 %s panic(已忽略): %v", step, r)
+		}
+	}()
+	if err := fn(ctx); err != nil {
+		log.Printf("[uninstall] 业务扩展 %s 返回错误(已忽略): %v", step, err)
+	}
+}
+
+// hookBeforeUninstall 扩展点①:清理前
+func (a *Agent) hookBeforeUninstall(ctx context.Context, info m.UninstallInfo) {
+	h := a.opts.Hook
+	if h == nil {
+		return
+	}
+	callHook("BeforeUninstall", func(c context.Context) error { return h.BeforeUninstall(c, info) })
+}
+
+// hookExtraCleanup 扩展点②:业务附加清理脚本(带 panic 保护)
+func (a *Agent) hookExtraCleanup(ctx context.Context, info m.UninstallInfo) string {
+	h := a.opts.Hook
+	if h == nil {
+		return ""
+	}
+	var out string
+	callHook("ExtraCleanup", func(c context.Context) error {
+		out = h.ExtraCleanup(c, info)
+		return nil
+	})
+	return out
+}
+
+// hookAfterUninstall 扩展点③:清理已下发,退出前
+func (a *Agent) hookAfterUninstall(ctx context.Context, info m.UninstallInfo) {
+	h := a.opts.Hook
+	if h == nil {
+		return
+	}
+	callHook("AfterUninstall", func(c context.Context) error { return h.AfterUninstall(c, info) })
+}
+
 // uninstallScript 生成清理脚本。顺序要点:
 //
-//	先取消自启、先删文件/单元,最后才 stop / pkill —— 避免 systemd 停服把
-//	“自己所在的清理进程”一起杀掉导致残留(早期版本的 bug)。
+//	先取消自启、先删文件/单元 -> 业务附加清理(ExtraCleanup)-> 最后才 stop / pkill,
+//	避免 systemd 停服把"自己所在的清理进程"一起杀掉导致残留(早期版本的 bug)。
+//
+// 参数 extra 为业务方通过 m.UninstallHook.ExtraCleanup 提供的附加清理脚本片段,
+// 为空则不插入该段。
 //
 // 环境变量(供单元测试/调试):
 //
 //	RC_SERVICE_NAME   服务名(默认 rc-agent)
 //	RC_UNINSTALL_PREFIX  所有目标路径加前缀(默认空=真实根);非空时跳过 pkill,便于安全演练
-func uninstallScript() string {
+func uninstallScript(extra string) string {
 	svc := os.Getenv("RC_SERVICE_NAME")
 	if svc == "" {
 		svc = "rc-agent"
 	}
 	prefix := os.Getenv("RC_UNINSTALL_PREFIX")
+
+	// 业务附加清理段:排在「删除 agent 产物之后、停服之前」执行
+	bizStep := ""
+	if strings.TrimSpace(extra) != "" {
+		bizStep = `
+# 5) 业务附加清理(m.Options.Hook.ExtraCleanup 提供)
+` + strings.TrimRight(extra, "\n") + `
+`
+	}
+
 	return `#!/bin/sh
 # 清理脚本(由 rc-agent 卸载时以独立进程执行)
 P='` + prefix + `'
@@ -166,8 +256,8 @@ rm -rf "$P/etc/rc-agent" "$P/var/lib/rc-agent" "$P/etc/rc-agent.conf" 2>/dev/nul
 rm -f "$P/etc/systemd/system/$SVC.service" "$P/etc/systemd/system/$SVC.service.d/override.conf" 2>/dev/null || true
 rmdir "$P/etc/systemd/system/$SVC.service.d" 2>/dev/null || true
 systemctl daemon-reload 2>/dev/null || true
-
-# 5) 最后才触发停止/清进程:至此已无任何待删文件,即使本脚本随 cgroup 被杀也无残留
+` + bizStep + `
+# 6) 最后才触发停止/清进程:至此已无任何待删文件,即使本脚本随 cgroup 被杀也无残留
 systemctl stop "$SVC" 2>/dev/null || true
 systemctl reset-failed "$SVC" 2>/dev/null || true
 if [ -z "$P" ]; then

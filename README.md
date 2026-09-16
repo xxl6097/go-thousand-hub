@@ -215,6 +215,35 @@ agent 常用参数(均可用环境变量替代 flag):
 >
 > 已知残留:systemd journal 中 rc-agent 单元的历史日志不随卸载删除(仅可用 `journalctl --rotate && journalctl --vacuum-time=1s` 全量清空,代价是清掉整机日志,默认不做)。web 终端里以 root 跑过的命令若写入 `~/.bash_history`,属正常使用痕迹,卸载不干预。
 
+### 6.1 卸载扩展点(UninstallHook)
+
+业务可在 agent 卸载前后插入自己的处理(上报卸载事件、通知注册中心/CMDB、清理业务随包产物等),
+**无需修改 rc-agent 源码**:agent 启动前给 `m.Options.Hook` 赋值即可。
+
+```go
+opts := m.Options{ServerURL: ..., Token: ...}      // 与 rc-agent 相同的启动参数
+opts.Hook = m.UninstallHookFuncs{                  // 函数式适配:只填需要的阶段
+    OnBeforeUninstall: func(ctx context.Context, info m.UninstallInfo) error { return notify(info) },
+    OnExtraCleanup:    func(ctx context.Context, info m.UninstallInfo) string { return "rm -rf /opt/myapp/sidecar" },
+    OnAfterUninstall:  func(ctx context.Context, info m.UninstallInfo) error { return markDone(info) },
+}
+pub.New(&opts, ctx)                                // pkg/agent
+```
+
+| 扩展点 | 时机 | 典型用途 |
+|---|---|---|
+| `BeforeUninstall(ctx, info)` | 清理脚本下发**之前**(agent 进程内,仍可联网) | 上报/注销/写审计 |
+| `ExtraCleanup(ctx, info) string` | 返回值作为 shell 片段**追加进清理脚本**,排在「停服/杀进程」之前以 root 执行 | 删除业务自己的文件/配置 |
+| `AfterUninstall(ctx, info)` | 清理已下发、agent **退出前** | 发送"卸载完成"通知 |
+
+`info` 为 `m.UninstallInfo{AgentID, Name, Host, Version}`。
+
+> 📖 **第三方开发者完整接入指南**:[`docs/agent-uninstall-hook.md`](docs/agent-uninstall-hook.md)(接口契约、三阶段时序、两种注入方式、演练调试、FAQ、安全注意)
+> 完整可运行示例:[`examples/agent-uninstall-hook`](examples/agent-uninstall-hook/main.go)
+
+> 容错语义:三个回调均为**可选**(未实现/返回 nil 即跳过);返回的 error 与内部 panic 都只记录日志、
+> **不阻断**卸载主流程;每个回调限时 10s。接口定义见 `pkg/agent/m/hooks.go`(含 `UninstallHookFuncs` 适配器)。
+
 ## 七、运维说明
 
 - **在线判定**:agent 每 5s 心跳;掉线即显示离线并自动结束其名下终端会话,重连后历史主机仍保留(含最后心跳时间)。
