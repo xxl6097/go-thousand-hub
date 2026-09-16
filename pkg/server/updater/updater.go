@@ -1,8 +1,10 @@
 // Package updater 定义 rc-server「服务端自升级」的可插拔扩展点。
 //
 // rc-server 自身只定义契约,不内置任何具体升级逻辑 —— 具体"在哪里检测新版本、
-// 如何拉取并替换自身"由第三方开发者实现 Updater 并注入,接入方式见 README
-// 「七、升级扩展(Updater)」。
+// 如何拉取并替换自身"由第三方开发者实现 Updater 并注入。
+//
+// 接入指南(第三方开发者):docs/server-updater.md
+// 可运行示例:examples/server-custom-updater
 package updater
 
 import (

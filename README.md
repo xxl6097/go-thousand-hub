@@ -313,4 +313,7 @@ RC_UPDATE_URL=https://upd.example.com/api/upgrade
 | `GET  {RC_UPDATE_URL}/check` | 检测是否有新版 | `200` + `{"version":"v1.3.0","notes":"...","url":"..."}`;`204` = 已是最新 |
 | `POST {RC_UPDATE_URL}/apply` | 执行升级,请求体 `{"version":"v1.3.0"}` | `2xx` = 已受理 |
 
+> 📖 **第三方开发者完整接入指南**:[`docs/server-updater.md`](docs/server-updater.md)(接口契约、两种接入方式、HTTP 协议与状态码、REST API 参考、典型升级流程、调试与 FAQ、安全注意)
+> 可运行示例:[`examples/server-custom-updater`](examples/server-custom-updater/main.go)
+
 > ⚠ `apply` 后 rc-server 进程可能被第三方逻辑重启,期间控制台会提示「服务端正在重启,页面将自动刷新」。当前版本号展示可用 `RC_VERSION` 指定(如 `RC_VERSION=v1.4.0`),仅用于界面展示与对比。
