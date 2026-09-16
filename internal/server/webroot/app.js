@@ -1,4 +1,4 @@
-/* ============ 千机台 Remote Console 前端逻辑 ============ */
+/* ============ 千机台 Remote Console 前端逻辑v1.0.1 ============ */
 "use strict";
 
 const $ = (s) => document.querySelector(s);
